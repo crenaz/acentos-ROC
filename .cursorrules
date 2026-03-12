@@ -1,0 +1,29 @@
+# .cursorrules for OCR Strategy Pattern
+
+You are an expert Python architect. When I ask you to create a new image preprocessing filter or modify the OCR pipeline, follow these strict rules:
+
+1. **Pattern Enforcement**: All new filters must inherit from `filters.base.BaseFilter`.
+2. **Interface**: Every filter must implement an `apply(self, image: np.ndarray) -> np.ndarray` method.
+3. **Data Handling**:
+   - Use OpenCV (`cv2`) and `numpy` (`np`) for all image manipulations.
+   - Always include type hints (e.g., `import numpy as np`).
+   - Assume the input is a BGR or grayscale `numpy.ndarray`.
+4. **File Placement**: Place new filter implementations in the `src/filters/` directory as individual files.
+5. **Documentation**: Each filter should include a brief docstring explaining the OpenCV technique used (e.g., Gaussian Blur, Otsu's Thresholding, deskew).
+
+**Code Template for New Filters:**
+
+```python
+import cv2
+import numpy as np
+from .base import BaseFilter
+
+class NewFilterName(BaseFilter):
+    """Short description of what this filter does."""
+
+    def apply(self, image: np.ndarray) -> np.ndarray:
+        # Implementation here
+        processed_image = image
+        return processed_image
+```
+

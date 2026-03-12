@@ -208,3 +208,8 @@ __marimo__/
 
 # Advice Given
 suggested_instructions.md
+
+# Test Image and Debug folder
+document.png
+debug/
+
