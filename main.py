@@ -4,7 +4,9 @@ import argparse
 from pathlib import Path
 
 from src.core.processor import PreprocessingPipeline
+from src.filters.gaussian_blur import GaussianBlurFilter
 from src.filters.grayscale import GrayscaleFilter
+from src.filters.morphology import MorphologyFilter
 from src.filters.threshold import AdaptiveThresholdFilter
 from src.ocr.tesseract_wrapper import TesseractWrapper
 from src.utils.image_io import load_image, save_image
@@ -13,7 +15,9 @@ from src.utils.image_io import load_image, save_image
 def build_default_pipeline(debug: bool = False) -> PreprocessingPipeline:
     pipeline = PreprocessingPipeline(debug=debug)
     pipeline.add_filter(GrayscaleFilter())
+    pipeline.add_filter(GaussianBlurFilter(ksize=5))
     pipeline.add_filter(AdaptiveThresholdFilter(block_size=15, constant=5))
+    pipeline.add_filter(MorphologyFilter(op="close", kernel_size=2))
     return pipeline
 
 
@@ -43,6 +47,19 @@ def main() -> None:
         default=6,
         help="Tesseract page segmentation mode (PSM).",
     )
+    parser.add_argument(
+        "--lang",
+        type=str,
+        default="eng",
+        help="Tesseract language code (e.g. 'eng', 'spa', or 'spa+eng').",
+    )
+    parser.add_argument(
+        "--oem",
+        type=int,
+        default=3,
+        choices=(0, 1, 2, 3),
+        help="Tesseract OCR Engine Mode (0=legacy, 1=LSTM, 2=legacy+LSTM, 3=default).",
+    )
 
     args = parser.parse_args()
 
@@ -55,8 +72,8 @@ def main() -> None:
     if args.debug:
         save_image(Path(args.out_debug_dir) / f"{img_path.stem}_processed.png", processed)
 
-    config = f"--oem 3 --psm {args.psm}"
-    ocr = TesseractWrapper(tesseract_cmd=args.tesseract_cmd)
+    config = f"--oem {args.oem} --psm {args.psm}"
+    ocr = TesseractWrapper(tesseract_cmd=args.tesseract_cmd, lang=args.lang)
     result = ocr.process_image(processed, custom_config=config)
 
     print("=== OCR TEXT ===")
@@ -64,6 +81,8 @@ def main() -> None:
     print("\n=== SUMMARY ===")
     print(f"Average confidence: {result.confidence:.2f}%")
     print(f"Config used: {result.config_used}")
+    if result.confidence < 70:
+        print("Tip: If quality is low, try --psm 3 or --psm 4, or --oem 1 for legacy engine.")
 
 
 if __name__ == "__main__":
