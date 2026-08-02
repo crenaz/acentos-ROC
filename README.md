@@ -97,9 +97,37 @@ uv run python main.py document.png --debug --out-debug-dir debug --psm 6
 
 `uv run` executes inside the locked environment without needing to activate it.
 
+#### Diagnosing a bad result
+
+`--debug` writes one image per pipeline stage, numbered in execution order:
+
+```
+Pipeline steps (images written to debug/):
+  [00] source                       2016x1512x3      uint8
+  [01] applied Grayscale            2016x1512        uint8
+  [02] applied GaussianBlur         2016x1512        uint8
+  [03] applied AdaptiveThreshold    2016x1512        uint8
+  [04] applied Morphology           2016x1512        uint8
+```
+
+```
+debug/document_00_source.png
+debug/document_01_Grayscale.png
+debug/document_02_GaussianBlur.png
+debug/document_03_AdaptiveThreshold.png
+debug/document_04_Morphology.png
+```
+
+Comparing consecutive images shows *which* stage degraded the page, which a single
+final image cannot. The printed shape and dtype make channel drops and type changes
+visible — a common cause of a filter silently doing nothing useful.
+
+Note that these are full-resolution lossless PNGs; a 12 MP phone photo produces
+several megabytes per stage.
+
 Flags:
 
-- `--debug`: prints filter steps and the tessdata source, and saves a processed image into the `debug/` directory.
+- `--debug`: prints each pipeline step with its shape and dtype, reports which tessdata directory was used, and writes **every intermediate image** to the `debug/` directory.
 - `--psm`: Tesseract Page Segmentation Mode (6 works well for blocks of text).
 - `--lang`: Tesseract language code. Defaults to `spa+eng`.
 - `--oem`: OCR Engine Mode — `1` (LSTM) or `3` (default). Legacy modes are gone in Tesseract 5.

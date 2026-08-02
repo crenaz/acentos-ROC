@@ -9,7 +9,7 @@ from acentos_ocr.filters.grayscale import GrayscaleFilter
 from acentos_ocr.filters.morphology import MorphologyFilter
 from acentos_ocr.filters.threshold import AdaptiveThresholdFilter
 from acentos_ocr.ocr.tesseract_wrapper import TesseractWrapper
-from acentos_ocr.utils.image_io import load_image, save_image
+from acentos_ocr.utils.image_io import load_image
 
 # Project-local high-accuracy models, populated by ./scripts/fetch_tessdata.sh.
 # Preferred over the system tessdata when present, so results do not depend on
@@ -32,8 +32,11 @@ def resolve_tessdata_dir(explicit: str | None) -> Path | None:
     return None
 
 
-def build_default_pipeline(debug: bool = False) -> PreprocessingPipeline:
-    pipeline = PreprocessingPipeline(debug=debug)
+def build_default_pipeline(
+    debug: bool = False,
+    debug_dir: Path | None = None,
+) -> PreprocessingPipeline:
+    pipeline = PreprocessingPipeline(debug=debug, debug_dir=debug_dir)
     pipeline.add_filter(GrayscaleFilter())
     pipeline.add_filter(GaussianBlurFilter(ksize=5))
     pipeline.add_filter(AdaptiveThresholdFilter(block_size=15, constant=5))
@@ -104,11 +107,12 @@ def main() -> None:
     img_path = Path(args.image)
     image = load_image(img_path)
 
-    pipeline = build_default_pipeline(debug=args.debug)
-    processed = pipeline.run(image)
-
+    debug_dir = Path(args.out_debug_dir) if args.debug else None
     if args.debug:
-        save_image(Path(args.out_debug_dir) / f"{img_path.stem}_processed.png", processed)
+        print(f"Pipeline steps (images written to {debug_dir}/):")
+
+    pipeline = build_default_pipeline(debug=args.debug, debug_dir=debug_dir)
+    processed = pipeline.run(image, name=img_path.stem)
 
     tessdata_dir = resolve_tessdata_dir(args.tessdata_dir)
     if args.debug:
