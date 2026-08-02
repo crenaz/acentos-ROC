@@ -91,3 +91,38 @@ def test_deskew_returns_image_when_too_few_ink_pixels() -> None:
 def test_deskew_rejects_colour_input() -> None:
     with pytest.raises(ValueError):
         DeskewFilter().apply(np.zeros((100, 100, 3), np.uint8))
+
+
+def make_photo_like_page(skew_deg: float) -> np.ndarray:
+    """
+    A skewed page over a noisy, unevenly lit background with a hard border.
+
+    This is what defeated the previous minAreaRect estimator: Otsu marks the
+    background and the page edge as ink, so the minimum-area rectangle spans the
+    whole frame. The projection profile is driven by text-line periodicity and is
+    unaffected by it.
+    """
+    rng = np.random.default_rng(0)
+    frame = rng.integers(90, 150, (900, 1300), dtype=np.uint8)          # noisy background
+    frame[:, :] = cv2.GaussianBlur(frame, (31, 31), 0)                   # uneven lighting
+    page = make_text_page(skew_deg, width=1000, height=700)
+    frame[100:800, 150:1150] = page
+    cv2.rectangle(frame, (150, 100), (1150, 800), 0, 6)                  # hard page edge
+    return frame
+
+
+@pytest.mark.parametrize("skew", [-5.0, -2.0, 2.0, 5.0])
+def test_deskew_works_over_a_noisy_background(skew: float) -> None:
+    """Finding #11: the estimator must survive a photographic background."""
+    estimated = DeskewFilter().estimate_angle(make_photo_like_page(skew))
+    assert estimated is not None
+    assert abs(estimated + skew) < 1.0
+
+
+def test_estimate_angle_declines_when_rotation_exceeds_search_range() -> None:
+    """No trial angle straightens a 40 deg page, so the peak never stands out."""
+    assert DeskewFilter(max_angle_deg=15.0).estimate_angle(make_text_page(40.0)) is None
+
+
+def test_estimate_angle_declines_on_a_blank_page() -> None:
+    assert DeskewFilter().estimate_angle(np.full((400, 400), 255, np.uint8)) is None

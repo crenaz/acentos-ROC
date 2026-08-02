@@ -14,8 +14,10 @@
 > - **#4 — fixed** (commit `82dc59b`): every pipeline stage is written to disk
 >   under `--debug`.
 > - **#10 — fixed**: the sign inversion is corrected and covered by tests. Fixing it
->   exposed **#11**, which is why deskew still cannot be used on this corpus.
-> - **#2, #5–#9, #11 — open.**
+>   exposed **#11**.
+> - **#11 — fixed**: the estimator is replaced by a projection-profile search that
+>   works on photographs. Deskew is opt-in via `--deskew`, not default.
+> - **#2, #5–#9 — open.**
 
 > ### Correction to finding #3 (2026-08-02)
 >
@@ -233,7 +235,7 @@ exceeds the limit.
 
 Fixing #10 did **not** make deskew usable on this corpus — see **#11**.
 
-### 11. `DeskewFilter`'s estimator does not work on photographs
+### 11. `DeskewFilter`'s estimator does not work on photographs — FIXED
 
 *Added 2026-08-02, found while fixing #10. Not part of the original nine findings.*
 
@@ -268,6 +270,45 @@ the measurement to a detected page region would help either approach.
 Until then `DeskewFilter` must stay out of the default pipeline. It is correct for
 clean scans and is covered by tests; it simply does not address the corpus in hand.
 
+**→ FIXED 2026-08-02.** The `minAreaRect` estimator is replaced by a projection
+profile search. A morphological gradient isolates character strokes (text is
+high-local-contrast; smooth background is not), then trial rotations are scored by
+the squared row-to-row differences of the horizontal ink profile — sharp when text
+lines are horizontal, flat otherwise. Coarse 1° sweep, then 0.1° refinement, on a
+900px-tall working copy: about 0.06s on a 6 MP photo.
+
+It recovers induced skew exactly on the real photos, where the old estimator
+reported 0.00° for everything, and it is exact on synthetic scans too, so it
+replaces the old approach rather than sitting alongside it:
+
+| Induced | `IMG_1594` estimate | `IMG_1595` estimate |
+| --- | --- | --- |
+| +0° | −2.00° | −1.70° |
+| +2° | −4.00° | −3.70° |
+| +5° | −7.00° | −6.70° |
+| +8° | −10.00° | −9.70° |
+
+The constant offset is each photo's own intrinsic tilt — `IMG_1594` sits at +2.00°,
+`IMG_1595` at +1.70°.
+
+Two guards prevent invented rotations: the search is bounded by `max_angle_deg`, and
+the peak-to-median score ratio must exceed `min_peak_ratio` (default 10). Measured
+separation is clean — 20–36 for the real samples, 1.2 for a 40° page where no trial
+angle helps.
+
+**Deskew is opt-in via `--deskew`, not default.** Measured CER:
+
+| Image | Induced | No deskew | Deskew |
+| --- | --- | --- | --- |
+| `IMG_1594` | 0° | 8.9% | **7.3%** |
+| `IMG_1594` | −4° | 45.3% | **7.3%** |
+| `IMG_1595` | 0° | **41.0%** | 48.4% |
+| `IMG_1595` | +3° | 57.7% | **46.7%** |
+
+It rescues a genuinely skewed page decisively, but regresses `IMG_1595` at rest, so
+enabling it by default is not justified on two samples. Revisit once more ground
+truth exists.
+
 ---
 
 ## Suggested order of work
@@ -284,11 +325,11 @@ Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
 5. ~~Deskew sign inversion (#10)~~ — done 2026-08-02. Fixed and covered by the
    repo's first tests; residual skew on synthetic pages went from −2× the input
    to 0.00°. Fixing it exposed **#11**, below.
-6. **A skew estimator that works on photographs (#11)** — the current one reports
-   0.00° on real clippings whatever their rotation, so deskew stays out of the
-   default pipeline. Needed before any skew correction is possible on this corpus.
-7. **More ground truth** — one transcription (`IMG_1594`) currently anchors every
-   quality claim. More would make CER measurements trustworthy across the corpus.
+6. ~~A skew estimator that works on photographs (#11)~~ — done 2026-08-02.
+   Projection-profile search, exact on both real photos and synthetic scans.
+7. **More ground truth** — two transcriptions (`IMG_1594`, `IMG_1595`) currently
+   anchor every quality claim, and they disagree about whether deskew helps. More
+   would settle that and let `--deskew` become a default if warranted.
    Convention: `<base>/text-of-<image stem>.md`, consumed by
    `scripts/evaluate_cer.py`.
 8. **Composable pipelines via CLI (#2)** — unlocks A/B testing stacks against the

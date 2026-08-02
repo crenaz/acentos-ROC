@@ -130,6 +130,7 @@ Flags:
 - `--debug`: prints each pipeline step with its shape and dtype, reports which tessdata directory was used, and writes **every intermediate image** to the `debug/` directory.
 - `--psm`: Tesseract Page Segmentation Mode (6 works well for blocks of text).
 - `--lang`: Tesseract language code. Defaults to `spa+eng`.
+- `--deskew`: correct page skew before OCR. **Off by default** — see below.
 - `--oem`: OCR Engine Mode — `1` (LSTM) or `3` (default). Legacy modes are gone in Tesseract 5.
 - `--tessdata-dir`: override the language-model directory (defaults to project-local `tessdata/`).
 - `--tesseract-cmd`: override path to Tesseract binary if needed (default is usually `/usr/bin/tesseract`).
@@ -167,6 +168,21 @@ Three things worth knowing from those measurements:
   one, which is why it is the default rather than plain `spa`.
 - Cost of `tessdata_best` is roughly 2× wall clock — `document.png` takes ~3.7s
   versus ~1.8s with the system models on a 4-core i7-1165G7.
+
+#### Deskew (`--deskew`)
+
+Off by default, because it helps decisively on a tilted page and hurts on a straight
+one. Measured CER:
+
+| Image | Rotation | Without | With `--deskew` |
+| --- | --- | --- | --- |
+| `IMG_1594` | as shot (+2.0° tilt) | 8.9% | **7.3%** |
+| `IMG_1594` | −4° added | 45.3% | **7.3%** |
+| `IMG_1595` | as shot (+1.7° tilt) | **41.0%** | 48.4% |
+| `IMG_1595` | +3° added | 57.7% | **46.7%** |
+
+Reach for it when a photo is visibly tilted. Two ground-truth samples disagree about
+whether it pays on an already-straight page, so it is not yet a default.
 
 > **The confidence figures are Tesseract's self-assessment, not accuracy.** A model
 > can be confidently wrong. Treat the confidence table as a regression check — "did
