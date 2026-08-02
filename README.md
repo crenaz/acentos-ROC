@@ -36,9 +36,20 @@ This downloads `eng`, `spa`, and `osd` (~39 MB total). The directory is
 gitignored — run the script once after cloning. It is idempotent; pass `--force`
 to re-download.
 
-`tessdata_best` is slower than the standard models but measurably more accurate:
-on `document.png` it scores **64.47%** vs **54.92%** average confidence. See the
-baselines table below for the full comparison.
+`tessdata_best` is slower than Ubuntu's standard models, and its advantage is
+narrower than it first appears — it wins on Spanish and *loses* on English:
+
+| Models | `fluoxetine.png` (English) | `document.png` (Spanish) | Speed |
+| --- | --- | --- | --- |
+| System (`tesseract-ocr-*` packages) | **84.44%** | 61.23% | ~1.8s |
+| `tessdata_best` | 82.74% | **64.47%** | ~3.7s |
+
+So for **English-only work, the system models are both faster and better** — use
+`--tessdata-dir /usr/share/tesseract-ocr/5/tessdata`. `tessdata_best` earns its
+keep on accented Spanish, which is the project's long-term target.
+
+Requires the system language packs for the fallback path:
+`sudo apt install -y tesseract-ocr-eng tesseract-ocr-spa`.
 
 The pipeline auto-detects `tessdata/` when populated and falls back to
 Tesseract's system-wide lookup when it is not. Override with `--tessdata-dir`.
@@ -103,22 +114,28 @@ With the default filter stack at `--psm 6`, the committed sample images score:
 | --- | --- | --- |
 | Tesseract 4.1.1, system models, `--lang eng` | 75.30% | 49.37% |
 | Tesseract 4.1.1, system models, `--lang spa+eng` | 81.73% | 56.21% |
-| Tesseract 5.5.1, system models | 80.42% | 54.92% |
-| **Tesseract 5.5.1, `tessdata_best`, `--lang spa+eng`** *(current default)* | **82.74%** | **64.47%** |
+| Tesseract 5.5.1, system models, `--lang spa+eng` | **84.44%** | 61.23% |
+| Tesseract 5.5.1, `tessdata_best`, `--lang spa+eng` *(current default)* | 82.74% | **64.47%** |
 
-Two things worth knowing from those measurements:
+Three things worth knowing from those measurements:
 
 - `spa+eng` beats either language alone on *both* images, including the English
   one, which is why it is the default rather than plain `spa`.
-- The **models** mattered far more than the **engine**. Comparing like-for-like on
-  `spa`, upgrading Tesseract 4.1.1 → 5.5.1 gained only +0.80 points on
-  `document.png`, while switching to `tessdata_best` gained +9.55.
+- The **engine** mattered more than the **models**. On `document.png`, upgrading
+  Tesseract 4.1.1 → 5.5.1 gained +5.02 points; `tessdata_best` on top of that
+  gained a further +3.24. Neither configuration wins on both images.
+- Cost of `tessdata_best` is roughly 2× wall clock — `document.png` takes ~3.7s
+  versus ~1.8s with the system models on a 4-core i7-1165G7.
 
-Cost of `tessdata_best` is roughly 2× wall clock — `document.png` takes ~3.7s
-versus ~1.8s with the system models on a 4-core i7-1165G7.
+> **These numbers are Tesseract's self-reported confidence, not accuracy.** A model
+> can be confidently wrong, and at these margins the metric cannot separate the two
+> configurations: inspecting the text, system models and `tessdata_best` make
+> *different* errors on `document.png` rather than one making fewer. Treat the table
+> as a regression check — "did this change break something?" — not as a quality
+> ranking. Deciding which configuration is genuinely better requires ground-truth
+> transcriptions and a character error rate, which the project does not yet have.
 
-Use these as a regression check after changing the filter stack or re-locking
-dependencies. Recorded against Tesseract 5.5.1 and the current `uv.lock`.
+Recorded against Tesseract 5.5.1 and the current `uv.lock`.
 
 ### 5. Project layout
 

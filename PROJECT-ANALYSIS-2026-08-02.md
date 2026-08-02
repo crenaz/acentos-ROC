@@ -12,8 +12,36 @@
 > - **#1 — fixed** (commit `4607546`).
 > - **#3 — partially fixed** (commit `09a087d`): the language half is resolved
 >   (`spa+eng` default, Tesseract 5, `tessdata_best`). The filter-stack half — blur
->   and morphological close eroding diacritics — is still open.
+>   and morphological close eroding fine detail — is still open.
 > - **#2, #4–#10 — open.**
+
+## Current focus (set 2026-08-02, until further notice)
+
+Near-term work targets the **`Raw-Photos-Of-Cayman-Job-Listings`** corpus —
+handheld phone photos of newspaper job listings, **all in English**. Spanish and
+diacritic handling are deprioritised until this changes.
+
+This re-orders the work below. Finding #3's remaining half was framed around
+preserving accent marks; for English newsprint photos the same filter stack is
+still wrong, but for different reasons — perspective, uneven lighting, and
+newsprint texture rather than eroded diacritics. It also promotes **#10**: a
+handheld photo of a clipping is skewed by definition, deskew is the obvious
+filter to reach for, and it currently doubles the skew instead of removing it.
+
+Two gaps none of the ten findings covers:
+
+- **The sample images are unrepresentative.** `fluoxetine.png` is a pill label and
+  `document.png` is a Spanish book page. Neither is a newspaper clipping photo. A
+  representative Cayman image should be committed as a third sample.
+- **There is no ground truth.** Every measurement so far is Tesseract's
+  self-reported confidence, which is not accuracy — see the note in the README
+  baselines section. Filter tuning needs ground-truth transcriptions and a
+  character error rate to be meaningful.
+
+For English-only work the system models are both faster and more accurate than
+`tessdata_best` (84.44% vs 82.74% on `fluoxetine.png`, at half the wall clock),
+so `--tessdata-dir /usr/share/tesseract-ocr/5/tessdata` is the better setting for
+this corpus even though the project default remains `tessdata_best`.
 
 ---
 
@@ -178,15 +206,23 @@ inspection and only shows up under measurement.
 
 ## Suggested order of work
 
+Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
+
 1. ~~Packaging split-brain (#1)~~ — done 2026-08-02, commit `4607546`.
 2. ~~OCR quality, language half (#3)~~ — done 2026-08-02, commit `09a087d`.
    `spa+eng` default, Tesseract 5, project-local `tessdata_best`.
    `document.png` 49.37% → 64.47%.
-3. **OCR quality, filter half (#3)** — a diacritic-preserving stack. The blur and
-   morphological close still erode accent marks. Highest remaining impact on the goal.
-4. **Per-step debug output (#4)** — needed to diagnose the above empirically rather
-   than by guess.
-5. **Deskew sign inversion (#10)** — must be fixed before deskew is wired into any
-   pipeline, and is a natural first target for #6 since it needs measurement to see.
-6. **Composable pipelines via CLI (#2)** — unlocks A/B testing the stacks from #3.
-7. **Tests (#6)**, then the cleanup items (#5, #7, #8, #9).
+3. **Per-step debug output (#4)** — language-agnostic, and nothing downstream can be
+   tuned without seeing which stage degrades the image. Do this first.
+4. **Deskew sign inversion (#10)** — handheld clipping photos are skewed by
+   definition, so deskew moves from unused to essential. It must be corrected before
+   being wired in, and it needs a measurement-based test since the defect is
+   invisible by inspection.
+5. **A representative sample + ground truth** — commit a Cayman clipping photo and
+   transcriptions for the sample images, so quality can be measured as character
+   error rate instead of self-reported confidence.
+6. **Composable pipelines via CLI (#2)** — unlocks A/B testing stacks against the
+   real corpus.
+7. **OCR quality, filter half (#3)** — re-framed for photographs: perspective,
+   uneven lighting, and newsprint texture rather than diacritic erosion.
+8. **Tests (#6)**, then the cleanup items (#5, #7, #8, #9).
