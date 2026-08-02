@@ -5,15 +5,17 @@
 **Scope:** structural review of the project layout, packaging, and OCR pipeline.
 
 > **Status note:** Findings #1–#9 are preserved as originally written, describing the
-> state at `f5c0083`. Finding #10 was added later, on the same date, and describes a
-> defect found while working on the others — it is dated and marked as such.
+> state at `f5c0083`. Findings #10 and #11 were added later, on the same date, and
+> describe defects found while working on the others — both are dated and marked.
 >
 > Current status as of 2026-08-02:
 > - **#1 — fixed** (commit `4607546`).
 > - **#3 — fixed**, but its stated diagnosis was **wrong**. See the correction below.
 > - **#4 — fixed** (commit `82dc59b`): every pipeline stage is written to disk
 >   under `--debug`.
-> - **#2, #5–#10 — open.**
+> - **#10 — fixed**: the sign inversion is corrected and covered by tests. Fixing it
+>   exposed **#11**, which is why deskew still cannot be used on this corpus.
+> - **#2, #5–#9, #11 — open.**
 
 > ### Correction to finding #3 (2026-08-02)
 >
@@ -171,7 +173,7 @@ never mentions licensing at all.
 `.cursorrules` line 5 tells the AI filters inherit from `filters.base.BaseFilter` while
 the code uses `src.filters.base` — a small inconsistency that feeds finding #1.
 
-### 10. `DeskewFilter` rotates the wrong way and doubles the skew
+### 10. `DeskewFilter` rotates the wrong way and doubles the skew — FIXED
 
 *Added 2026-08-02, found while smoke-testing the filters after the uv migration.
 Not part of the original nine findings.*
@@ -220,6 +222,52 @@ This must land *before* deskew is added to any pipeline, and it needs a regressi
 test using known-skew synthetic pages (finding #6) — the defect is invisible by
 inspection and only shows up under measurement.
 
+**→ FIXED 2026-08-02.** Coordinates swapped, and the angle now folds into (−45, 45]
+from either side. Residual skew on synthetic pages went from −2× the input to 0.00°
+across ±1° to ±8°. Covered by `tests/test_deskew.py`, the repo's first tests.
+
+A second defect surfaced while testing: `max_angle_deg` **clamped** rather than
+declined, so a page detected at 40° was rotated by exactly 15° — baking in a
+rotation with no basis. It now returns the image unchanged when the detected angle
+exceeds the limit.
+
+Fixing #10 did **not** make deskew usable on this corpus — see **#11**.
+
+### 11. `DeskewFilter`'s estimator does not work on photographs
+
+*Added 2026-08-02, found while fixing #10. Not part of the original nine findings.*
+
+Independent of the sign inversion in #10, the angle estimator itself is unsuitable
+for the Cayman corpus. `DeskewFilter` runs Otsu over the whole image and takes
+`cv2.minAreaRect` of every dark pixel. On a clean scan that isolates the text block.
+On a photograph it also marks background, shadows and the clipping's own edges —
+about **10% of the frame** on `IMG_1594` — so the minimum-area rectangle spans
+essentially the entire image:
+
+| Added rotation | Detected angle | Ink | minAreaRect |
+| --- | --- | --- | --- |
+| +0° | 0.51° | 10.1% | 1967×2908 of 3024×1984 |
+| +2° | **0.00°** | 10.5% | 1983×2935 |
+| +5° | **0.00°** | 10.8% | 1983×2992 |
+| +8° | **0.00°** | 11.1% | 1983×3023 |
+
+It reports 0.00° no matter how far the page is rotated. Measured end-to-end, adding
+deskew to the pipeline changes character error rate not at all at +2°, +5° and +8°
+of induced skew, and makes it *worse* on the unmodified image (8.9% → 9.9%), because
+a detected 0.51° is just above the threshold and buys a full interpolation pass for
+nothing.
+
+Note that confidence *rose* to 88.97% on that worse-CER run — a clean example of why
+confidence cannot be used to judge these changes.
+
+**Fix:** the estimator needs replacing for photographs, not repairing. Candidates are
+a horizontal projection profile over a range of trial angles (maximise row-variance),
+or a Hough transform over text runs joined by a wide morphological close. Restricting
+the measurement to a detected page region would help either approach.
+
+Until then `DeskewFilter` must stay out of the default pipeline. It is correct for
+clean scans and is covered by tests; it simply does not address the corpus in hand.
+
 ---
 
 ## Suggested order of work
@@ -233,14 +281,16 @@ Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
 3. ~~Per-step debug output (#4)~~ — done 2026-08-02, commit `82dc59b`.
 4. ~~OCR quality, filter half (#3)~~ — done 2026-08-02. Diagnosis corrected; the
    binarising stack was the problem. CER on the Cayman sample 30.5% → 8.9%.
-5. **Deskew sign inversion (#10)** — handheld clipping photos are skewed by
-   definition, so deskew moves from unused to essential. It must be corrected before
-   being wired in, and it needs a measurement-based test since the defect is
-   invisible by inspection.
-6. **More ground truth** — one transcription (`IMG_1594`) currently anchors every
+5. ~~Deskew sign inversion (#10)~~ — done 2026-08-02. Fixed and covered by the
+   repo's first tests; residual skew on synthetic pages went from −2× the input
+   to 0.00°. Fixing it exposed **#11**, below.
+6. **A skew estimator that works on photographs (#11)** — the current one reports
+   0.00° on real clippings whatever their rotation, so deskew stays out of the
+   default pipeline. Needed before any skew correction is possible on this corpus.
+7. **More ground truth** — one transcription (`IMG_1594`) currently anchors every
    quality claim. More would make CER measurements trustworthy across the corpus.
    Convention: `<base>/text-of-<image stem>.md`, consumed by
    `scripts/evaluate_cer.py`.
-7. **Composable pipelines via CLI (#2)** — unlocks A/B testing stacks against the
+8. **Composable pipelines via CLI (#2)** — unlocks A/B testing stacks against the
    real corpus without editing source.
-8. **Tests (#6)**, then the cleanup items (#5, #7, #8, #9).
+9. **Tests (#6)**, then the cleanup items (#5, #7, #8, #9).
