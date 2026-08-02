@@ -3,13 +3,13 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from src.core.processor import PreprocessingPipeline
-from src.filters.gaussian_blur import GaussianBlurFilter
-from src.filters.grayscale import GrayscaleFilter
-from src.filters.morphology import MorphologyFilter
-from src.filters.threshold import AdaptiveThresholdFilter
-from src.ocr.tesseract_wrapper import TesseractWrapper
-from src.utils.image_io import load_image, save_image
+from acentos_ocr.core.processor import PreprocessingPipeline
+from acentos_ocr.filters.gaussian_blur import GaussianBlurFilter
+from acentos_ocr.filters.grayscale import GrayscaleFilter
+from acentos_ocr.filters.morphology import MorphologyFilter
+from acentos_ocr.filters.threshold import AdaptiveThresholdFilter
+from acentos_ocr.ocr.tesseract_wrapper import TesseractWrapper
+from acentos_ocr.utils.image_io import load_image, save_image
 
 
 def build_default_pipeline(debug: bool = False) -> PreprocessingPipeline:

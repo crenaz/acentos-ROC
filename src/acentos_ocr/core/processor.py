@@ -4,7 +4,7 @@ from typing import List
 
 import numpy as np
 
-from src.filters.base import BaseFilter
+from ..filters.base import BaseFilter
 
 
 class PreprocessingPipeline:
