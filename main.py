@@ -11,6 +11,26 @@ from acentos_ocr.filters.threshold import AdaptiveThresholdFilter
 from acentos_ocr.ocr.tesseract_wrapper import TesseractWrapper
 from acentos_ocr.utils.image_io import load_image, save_image
 
+# Project-local high-accuracy models, populated by ./scripts/fetch_tessdata.sh.
+# Preferred over the system tessdata when present, so results do not depend on
+# which language packs happen to be installed system-wide.
+DEFAULT_TESSDATA_DIR = Path(__file__).resolve().parent / "tessdata"
+
+
+def resolve_tessdata_dir(explicit: str | None) -> Path | None:
+    """
+    Decide which tessdata directory to use.
+
+    An explicit --tessdata-dir always wins. Otherwise use the project-local
+    directory if it has been populated, and fall back to Tesseract's own
+    system-wide lookup if it has not.
+    """
+    if explicit:
+        return Path(explicit)
+    if any(DEFAULT_TESSDATA_DIR.glob("*.traineddata")):
+        return DEFAULT_TESSDATA_DIR
+    return None
+
 
 def build_default_pipeline(debug: bool = False) -> PreprocessingPipeline:
     pipeline = PreprocessingPipeline(debug=debug)
@@ -42,6 +62,16 @@ def main() -> None:
         help="Optional path to the tesseract binary (e.g. /usr/bin/tesseract).",
     )
     parser.add_argument(
+        "--tessdata-dir",
+        type=str,
+        default=None,
+        help=(
+            "Directory containing .traineddata files. Defaults to the project-local "
+            "tessdata/ if populated (see scripts/fetch_tessdata.sh), otherwise falls "
+            "back to Tesseract's system-wide lookup."
+        ),
+    )
+    parser.add_argument(
         "--psm",
         type=int,
         default=6,
@@ -50,15 +80,23 @@ def main() -> None:
     parser.add_argument(
         "--lang",
         type=str,
-        default="eng",
-        help="Tesseract language code (e.g. 'eng', 'spa', or 'spa+eng').",
+        default="spa+eng",
+        help=(
+            "Tesseract language code (e.g. 'eng', 'spa', or 'spa+eng'). "
+            "Defaults to 'spa+eng', which measured better than either alone "
+            "on both sample images. Requires the tesseract-ocr-spa package."
+        ),
     )
     parser.add_argument(
         "--oem",
         type=int,
         default=3,
-        choices=(0, 1, 2, 3),
-        help="Tesseract OCR Engine Mode (0=legacy, 1=LSTM, 2=legacy+LSTM, 3=default).",
+        choices=(1, 3),
+        help=(
+            "Tesseract OCR Engine Mode (1=LSTM only, 3=default). "
+            "Modes 0 and 2 require the legacy engine, which Tesseract 5 "
+            "no longer ships."
+        ),
     )
 
     args = parser.parse_args()
@@ -72,8 +110,17 @@ def main() -> None:
     if args.debug:
         save_image(Path(args.out_debug_dir) / f"{img_path.stem}_processed.png", processed)
 
+    tessdata_dir = resolve_tessdata_dir(args.tessdata_dir)
+    if args.debug:
+        source = "system" if tessdata_dir is None else str(tessdata_dir)
+        print(f"Using tessdata: {source}")
+
     config = f"--oem {args.oem} --psm {args.psm}"
-    ocr = TesseractWrapper(tesseract_cmd=args.tesseract_cmd, lang=args.lang)
+    ocr = TesseractWrapper(
+        tesseract_cmd=args.tesseract_cmd,
+        lang=args.lang,
+        tessdata_dir=tessdata_dir,
+    )
     result = ocr.process_image(processed, custom_config=config)
 
     print("=== OCR TEXT ===")
@@ -82,7 +129,7 @@ def main() -> None:
     print(f"Average confidence: {result.confidence:.2f}%")
     print(f"Config used: {result.config_used}")
     if result.confidence < 70:
-        print("Tip: If quality is low, try --psm 3 or --psm 4, or --oem 1 for legacy engine.")
+        print("Tip: If quality is low, try --psm 3 or --psm 4, or --oem 1 to force the LSTM engine.")
 
 
 if __name__ == "__main__":

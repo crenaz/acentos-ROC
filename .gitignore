@@ -213,3 +213,7 @@ suggested_instructions.md
 document.png
 debug/
 
+# Tesseract language models - ~40MB of binaries, fetched on demand
+# via ./scripts/fetch_tessdata.sh rather than committed.
+tessdata/
+
