@@ -140,28 +140,38 @@ With the default filter stack at `--psm 6`, the committed sample images score:
 
 | Configuration | `fluoxetine.png` | `document.png` |
 | --- | --- | --- |
-| Tesseract 4.1.1, system models, `--lang eng` | 75.30% | 49.37% |
-| Tesseract 4.1.1, system models, `--lang spa+eng` | 81.73% | 56.21% |
-| Tesseract 5.5.1, system models, `--lang spa+eng` | **84.44%** | 61.23% |
-| Tesseract 5.5.1, `tessdata_best`, `--lang spa+eng` *(current default)* | 82.74% | **64.47%** |
+| Tesseract 4.1.1, system models, `--lang eng`, binarising stack | 75.30% | 49.37% |
+| Tesseract 4.1.1, system models, `--lang spa+eng`, binarising stack | 81.73% | 56.21% |
+| Tesseract 5.5.1, system models, `--lang spa+eng`, binarising stack | 84.44% | 61.23% |
+| Tesseract 5.5.1, `tessdata_best`, `--lang spa+eng`, binarising stack | 82.74% | 64.47% |
+| **Current default** — grayscale + blur3, `--psm 3` | **83.69%** | **95.17%** |
+
+#### Ground truth (the metric that matters)
+
+Measured as character error rate against a manual transcription of a Cayman job
+listing, via `scripts/evaluate_cer.py`:
+
+| Pipeline | `--psm 3` | `--psm 4` | `--psm 6` |
+| --- | --- | --- | --- |
+| Old binarising stack | 34.4% | 30.5% | 51.9% |
+| **Current: grayscale + blur3** | **8.9%** | **8.9%** | 16.2% |
 
 Three things worth knowing from those measurements:
 
+- **Binarising was the single biggest quality problem.** Tesseract 5's LSTM engine
+  binarises internally, and does it far better than a hand-tuned adaptive threshold.
+  Removing `AdaptiveThresholdFilter` and `MorphologyFilter` from the default stack
+  cut character error rate from 30.5% to 8.9%. Those filters remain available for
+  explicit use, but the preprocessing they represent was written for the pre-LSTM era.
 - `spa+eng` beats either language alone on *both* images, including the English
   one, which is why it is the default rather than plain `spa`.
-- The **engine** mattered more than the **models**. On `document.png`, upgrading
-  Tesseract 4.1.1 → 5.5.1 gained +5.02 points; `tessdata_best` on top of that
-  gained a further +3.24. Neither configuration wins on both images.
 - Cost of `tessdata_best` is roughly 2× wall clock — `document.png` takes ~3.7s
   versus ~1.8s with the system models on a 4-core i7-1165G7.
 
-> **These numbers are Tesseract's self-reported confidence, not accuracy.** A model
-> can be confidently wrong, and at these margins the metric cannot separate the two
-> configurations: inspecting the text, system models and `tessdata_best` make
-> *different* errors on `document.png` rather than one making fewer. Treat the table
-> as a regression check — "did this change break something?" — not as a quality
-> ranking. Deciding which configuration is genuinely better requires ground-truth
-> transcriptions and a character error rate, which the project does not yet have.
+> **The confidence figures are Tesseract's self-assessment, not accuracy.** A model
+> can be confidently wrong. Treat the confidence table as a regression check — "did
+> this change break something?" — and use `scripts/evaluate_cer.py` against a manual
+> transcription whenever a decision actually depends on which configuration is better.
 
 Recorded against Tesseract 5.5.1 and the current `uv.lock`.
 

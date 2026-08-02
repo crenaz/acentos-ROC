@@ -10,10 +10,28 @@
 >
 > Current status as of 2026-08-02:
 > - **#1 — fixed** (commit `4607546`).
-> - **#3 — partially fixed** (commit `09a087d`): the language half is resolved
->   (`spa+eng` default, Tesseract 5, `tessdata_best`). The filter-stack half — blur
->   and morphological close eroding fine detail — is still open.
-> - **#2, #4–#10 — open.**
+> - **#3 — fixed**, but its stated diagnosis was **wrong**. See the correction below.
+> - **#4 — fixed** (commit `82dc59b`): every pipeline stage is written to disk
+>   under `--debug`.
+> - **#2, #5–#10 — open.**
+
+> ### Correction to finding #3 (2026-08-02)
+>
+> #3 claimed the default stack was hostile to accents because blur and morphological
+> close eroded diacritics. The per-step debug images from #4 show that is **not** the
+> mechanism — accents survive thresholding intact. The real problem was that
+> **binarising at all destroys quality**: adaptive threshold converted paper texture
+> into speckle across the whole background, and Tesseract 5's LSTM engine binarises
+> internally anyway, far better than a hand-tuned threshold can.
+>
+> Measured as character error rate against a manual transcription of a Cayman job
+> listing: the old binarising stack scored **30.5%**, grayscale + light blur scores
+> **8.9%**. The default pipeline is now grayscale + `GaussianBlur(3)`, and the
+> default `--psm` moved from 6 to 3 (16.2% → 8.9% CER on the same image).
+>
+> The broader lesson: the architecture advice in `suggested_instructions.md`
+> prescribed a preprocessing chain appropriate to pre-LSTM Tesseract. Most of it was
+> actively harmful against Tesseract 5.
 
 ## Current focus (set 2026-08-02, until further notice)
 
@@ -212,17 +230,17 @@ Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
 2. ~~OCR quality, language half (#3)~~ — done 2026-08-02, commit `09a087d`.
    `spa+eng` default, Tesseract 5, project-local `tessdata_best`.
    `document.png` 49.37% → 64.47%.
-3. **Per-step debug output (#4)** — language-agnostic, and nothing downstream can be
-   tuned without seeing which stage degrades the image. Do this first.
-4. **Deskew sign inversion (#10)** — handheld clipping photos are skewed by
+3. ~~Per-step debug output (#4)~~ — done 2026-08-02, commit `82dc59b`.
+4. ~~OCR quality, filter half (#3)~~ — done 2026-08-02. Diagnosis corrected; the
+   binarising stack was the problem. CER on the Cayman sample 30.5% → 8.9%.
+5. **Deskew sign inversion (#10)** — handheld clipping photos are skewed by
    definition, so deskew moves from unused to essential. It must be corrected before
    being wired in, and it needs a measurement-based test since the defect is
    invisible by inspection.
-5. **A representative sample + ground truth** — commit a Cayman clipping photo and
-   transcriptions for the sample images, so quality can be measured as character
-   error rate instead of self-reported confidence.
-6. **Composable pipelines via CLI (#2)** — unlocks A/B testing stacks against the
-   real corpus.
-7. **OCR quality, filter half (#3)** — re-framed for photographs: perspective,
-   uneven lighting, and newsprint texture rather than diacritic erosion.
+6. **More ground truth** — one transcription (`IMG_1594`) currently anchors every
+   quality claim. More would make CER measurements trustworthy across the corpus.
+   Convention: `<base>/text-of-<image stem>.md`, consumed by
+   `scripts/evaluate_cer.py`.
+7. **Composable pipelines via CLI (#2)** — unlocks A/B testing stacks against the
+   real corpus without editing source.
 8. **Tests (#6)**, then the cleanup items (#5, #7, #8, #9).
