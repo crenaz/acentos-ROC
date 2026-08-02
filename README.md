@@ -11,43 +11,66 @@ sudo apt update
 sudo apt install -y tesseract-ocr libtesseract-dev
 ```
 
-### 2. Python environment (Python 3.13.3)
+### 2. Python environment (uv, Python 3.13)
 
-Create and activate a virtual environment, then install the project in editable mode
-via `pyproject.toml`:
+This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+`uv.lock` is authoritative — it pins the exact version of every transitive
+dependency, so the pipeline is reproducible across machines.
 
 ```bash
 cd /home/crenaz/projects/ONLINE/GITHUB/acentos-ROC
-python3.13 -m venv .venv
-source .venv/bin/activate
-pip install --upgrade pip
-pip install -e .
+uv sync
 ```
 
-For development extras (pytest, etc.):
+That single command provisions Python 3.13 (per `.python-version`), creates `.venv`,
+installs every locked dependency plus the `dev` group, and installs the project
+itself in editable mode pointing at `src/acentos_ocr/` — so edits take effect
+immediately and the installed copy can never drift from the source tree.
+
+Reproducing the exact locked environment (e.g. in CI or Docker):
 
 ```bash
-pip install -e ".[dev]"
+uv sync --frozen        # fails rather than silently re-resolving
 ```
 
-The editable install is deliberate: it points the environment at `src/acentos_ocr/`
-so edits take effect immediately and the installed copy can never drift out of sync
-with the source tree.
+Adding or updating a dependency:
+
+```bash
+uv add <package>        # updates pyproject.toml and uv.lock together
+uv lock --upgrade       # deliberately re-resolve everything
+```
+
+Commit `uv.lock` and `.python-version` with any such change. Because OCR output is
+sensitive to the OpenCV version, re-locking should always be followed by re-running
+the sample images below and confirming the confidence scores are unchanged.
 
 ### 3. Running OCR on an image
 
 Assuming `document.png` lives in the project root:
 
 ```bash
-source .venv/bin/activate
-python main.py document.png --debug --out-debug-dir debug --psm 6
+uv run python main.py document.png --debug --out-debug-dir debug --psm 6
 ```
+
+`uv run` executes inside the locked environment without needing to activate it.
 
 Flags:
 
 - `--debug`: prints filter steps and saves a processed image into the `debug/` directory.
 - `--psm`: Tesseract Page Segmentation Mode (6 works well for blocks of text).
 - `--tesseract-cmd`: override path to Tesseract binary if needed (default is usually `/usr/bin/tesseract`).
+
+#### Reference baselines
+
+With the default filter stack at `--psm 6`, the committed sample images score:
+
+| Image | Average confidence | Notes |
+| --- | --- | --- |
+| `fluoxetine.png` | 75.30% | English label photo |
+| `document.png` | 49.37% | Spanish prose, heavy diacritics |
+
+Use these as a regression check after changing the filter stack or re-locking
+dependencies. Recorded against Tesseract 4.1.1 and the current `uv.lock`.
 
 ### 4. Project layout
 
