@@ -4,9 +4,16 @@
 **Analyzed at commit:** `f5c0083` ("add example png")
 **Scope:** structural review of the project layout, packaging, and OCR pipeline.
 
-> **Status note:** Finding #1 was fixed on 2026-08-02 in the commit that immediately
-> precedes this document. Findings #2 through #9 are still open. The findings below
-> are preserved as originally written, describing the state at `f5c0083`.
+> **Status note:** Findings #1–#9 are preserved as originally written, describing the
+> state at `f5c0083`. Finding #10 was added later, on the same date, and describes a
+> defect found while working on the others — it is dated and marked as such.
+>
+> Current status as of 2026-08-02:
+> - **#1 — fixed** (commit `4607546`).
+> - **#3 — partially fixed** (commit `09a087d`): the language half is resolved
+>   (`spa+eng` default, Tesseract 5, `tessdata_best`). The filter-stack half — blur
+>   and morphological close eroding diacritics — is still open.
+> - **#2, #4–#10 — open.**
 
 ---
 
@@ -118,13 +125,68 @@ never mentions licensing at all.
 `.cursorrules` line 5 tells the AI filters inherit from `filters.base.BaseFilter` while
 the code uses `src.filters.base` — a small inconsistency that feeds finding #1.
 
+### 10. `DeskewFilter` rotates the wrong way and doubles the skew
+
+*Added 2026-08-02, found while smoke-testing the filters after the uv migration.
+Not part of the original nine findings.*
+
+`src/acentos_ocr/filters/deskew.py:27` builds the point set with:
+
+```python
+points = np.column_stack(np.where(binary > 0))
+```
+
+`np.where` returns `(rows, cols)`, so this yields `(y, x)` pairs — but
+`cv2.minAreaRect` expects `(x, y)`. Transposing the coordinates mirrors the page
+across its diagonal, which **inverts the sign of the measured angle**. The filter
+then rotates by that inverted angle, adding the skew it was supposed to remove.
+
+Measured on synthetic pages of horizontal text bars at known skew:
+
+| True skew | Angle from current `(y, x)` | Angle from correct `(x, y)` | Residual after `DeskewFilter` |
+| --- | --- | --- | --- |
+| −6.0° | −6.00° | +6.00° | **+12.00°** |
+| −3.0° | −3.00° | +3.00° | **+6.00°** |
+| 0.0° | 0.00° | 0.00° | 0.00° |
+| +3.0° | +3.00° | −3.00° | **−6.00°** |
+| +6.0° | +6.00° | −6.00° | **−12.00°** |
+
+The output skew is consistently *double* the input, in the opposite direction. Only
+a perfectly upright page is unaffected, because there is no sign to invert.
+
+The `if angle < -45: angle += 90` correction on line 33 does not compensate for this;
+it handles the separate `minAreaRect` convention where the returned angle wraps near
+±90°, and it masks the bug by keeping the result in a plausible-looking range. On
+`document.png` the raw value is `-88.947°`, which becomes a believable `1.05°`.
+
+**Why it has not caused visible damage:** `DeskewFilter` is not in
+`build_default_pipeline`, so it has never run in the real pipeline — see finding #2.
+It would begin corrupting output the moment it is wired in.
+
+**Fix:** swap the coordinate order, e.g.
+
+```python
+ys, xs = np.where(binary > 0)
+points = np.column_stack((xs, ys)).astype(np.float32)
+```
+
+This must land *before* deskew is added to any pipeline, and it needs a regression
+test using known-skew synthetic pages (finding #6) — the defect is invisible by
+inspection and only shows up under measurement.
+
 ---
 
 ## Suggested order of work
 
-1. ~~Packaging split-brain (#1)~~ — done 2026-08-02.
-2. **OCR quality (#3)** — Spanish language data, a diacritic-preserving filter stack.
-   Highest impact on the actual goal.
-3. **Per-step debug output (#4)** — needed to diagnose #3 empirically rather than by guess.
-4. **Composable pipelines via CLI (#2)** — unlocks A/B testing the stacks from #3.
-5. **Tests (#6)**, then the cleanup items (#5, #7, #8, #9).
+1. ~~Packaging split-brain (#1)~~ — done 2026-08-02, commit `4607546`.
+2. ~~OCR quality, language half (#3)~~ — done 2026-08-02, commit `09a087d`.
+   `spa+eng` default, Tesseract 5, project-local `tessdata_best`.
+   `document.png` 49.37% → 64.47%.
+3. **OCR quality, filter half (#3)** — a diacritic-preserving stack. The blur and
+   morphological close still erode accent marks. Highest remaining impact on the goal.
+4. **Per-step debug output (#4)** — needed to diagnose the above empirically rather
+   than by guess.
+5. **Deskew sign inversion (#10)** — must be fixed before deskew is wired into any
+   pipeline, and is a natural first target for #6 since it needs measurement to see.
+6. **Composable pipelines via CLI (#2)** — unlocks A/B testing the stacks from #3.
+7. **Tests (#6)**, then the cleanup items (#5, #7, #8, #9).
