@@ -59,6 +59,37 @@ class TesseractWrapper:
             config = f"{config} --tessdata-dir {shlex.quote(str(self.tessdata_dir))}"
         return config
 
+    @staticmethod
+    def _reconstruct_text(data: pd.DataFrame) -> str:
+        """
+        Rebuild the page text from the word-level dataframe.
+
+        `pytesseract.image_to_string` returns the same words, but it spawns a
+        second full Tesseract pass over the same image -- roughly doubling wall
+        clock, which on a 16 MP photo is about 15 seconds. Every word already
+        carries its block, paragraph and line number in the dataframe, so the
+        text can be assembled from what the first pass returned.
+
+        Words are joined within a line, lines within a block, and blocks are
+        separated by a blank line. Note that block order is Tesseract's reading
+        order, not necessarily the page's -- on a mixed one-and-two-column
+        layout those differ, which is a segmentation problem rather than
+        anything this method can repair.
+        """
+        if data.empty:
+            return ""
+
+        chunks: list[str] = []
+        previous_block = None
+        for (block, _, _), line in data.groupby(
+            ["block_num", "par_num", "line_num"], sort=False
+        ):
+            if previous_block is not None and block != previous_block:
+                chunks.append("")
+            chunks.append(" ".join(line["text"]))
+            previous_block = block
+        return "\n".join(chunks).strip()
+
     def process_image(self, image: np.ndarray, custom_config: str | None = None) -> OCRResult:
         config = self._build_config(custom_config)
 
@@ -74,13 +105,11 @@ class TesseractWrapper:
             output_type=pytesseract.Output.DATAFRAME,
         )
 
-        clean_data = raw_data[raw_data["text"].notna() & (raw_data["text"] != "")]
+        clean_data = raw_data[raw_data["text"].notna()].copy()
+        clean_data["text"] = clean_data["text"].astype(str).str.strip()
+        clean_data = clean_data[clean_data["text"] != ""]
 
-        full_text = pytesseract.image_to_string(
-            image_pil,
-            lang=self.lang,
-            config=config,
-        ).strip()
+        full_text = self._reconstruct_text(clean_data)
 
         avg_conf = float(clean_data["conf"].mean()) if not clean_data.empty else 0.0
 
