@@ -3,53 +3,10 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from acentos_ocr.core.processor import PreprocessingPipeline
-from acentos_ocr.filters.deskew import DeskewFilter
-from acentos_ocr.filters.gaussian_blur import GaussianBlurFilter
-from acentos_ocr.filters.grayscale import GrayscaleFilter
+from acentos_ocr.config import resolve_tessdata_dir
+from acentos_ocr.core.pipelines import build_default_pipeline
 from acentos_ocr.ocr.tesseract_wrapper import TesseractWrapper
 from acentos_ocr.utils.image_io import load_image
-
-# Project-local high-accuracy models, populated by ./scripts/fetch_tessdata.sh.
-# Preferred over the system tessdata when present, so results do not depend on
-# which language packs happen to be installed system-wide.
-DEFAULT_TESSDATA_DIR = Path(__file__).resolve().parent / "tessdata"
-
-
-def resolve_tessdata_dir(explicit: str | None) -> Path | None:
-    """
-    Decide which tessdata directory to use.
-
-    An explicit --tessdata-dir always wins. Otherwise use the project-local
-    directory if it has been populated, and fall back to Tesseract's own
-    system-wide lookup if it has not.
-    """
-    if explicit:
-        return Path(explicit)
-    if any(DEFAULT_TESSDATA_DIR.glob("*.traineddata")):
-        return DEFAULT_TESSDATA_DIR
-    return None
-
-
-def build_default_pipeline(
-    debug: bool = False,
-    debug_dir: Path | None = None,
-    deskew: bool = False,
-) -> PreprocessingPipeline:
-    """
-    Grayscale plus a light blur. Tesseract 5's LSTM engine binarises internally and
-    does it better than a hand-tuned threshold, so the pipeline deliberately stops
-    short of that -- see the README baselines.
-
-    Deskew is opt-in: it rescues a genuinely skewed page (45.3% -> 7.3% CER on a
-    sample rotated 4 degrees) but is not free on one that is already straight.
-    """
-    pipeline = PreprocessingPipeline(debug=debug, debug_dir=debug_dir)
-    pipeline.add_filter(GrayscaleFilter())
-    if deskew:
-        pipeline.add_filter(DeskewFilter())
-    pipeline.add_filter(GaussianBlurFilter(ksize=3))
-    return pipeline
 
 
 def main() -> None:

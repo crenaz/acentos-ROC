@@ -146,11 +146,17 @@ filter's name but never saves the intermediate — the per-step `imwrite` that t
 blueprint suggested (`suggested_instructions.md:203`) stayed commented out. To diagnose
 a 4-stage pipeline you need all 4 images.
 
-### 5. Tesseract runs twice per image
+### 5. Tesseract runs twice per image — FIXED
 
 `tesseract_wrapper.py:43` calls `image_to_data`, then `:52` calls `image_to_string` on
 the same input — double the OCR cost per page. The full text can be reconstructed from
 the DataFrame instead.
+
+**→ FIXED 2026-08-07.** `_reconstruct_text` assembles the page from the word-level
+dataframe the first pass already returned, grouping by block/paragraph/line. CER is
+byte-identical on `IMG_1595` (41.0% at psm 3, 53.7% at psm 4); wall clock for that
+two-PSM run fell from 34.5s to 19.0s. Confidence moved by <0.15 points because the
+filter now also drops whitespace-only tokens that were previously averaged in.
 
 ### 6. Zero tests
 
@@ -158,11 +164,16 @@ the DataFrame instead.
 `[project.optional-dependencies].dev`, and the blueprint specifically called for
 per-filter validation. Every filter is unverified.
 
-### 7. Three empty files are committed
+### 7. Three empty files are committed — FIXED
 
 `src/core/engine.py`, `src/filters/binarization.py`, `src/filters/noise_reduction.py` —
 scaffolded from the blueprint's directory diagram, never implemented. `engine.py`'s
 intended "orchestrator" role got absorbed into `main.py`.
+
+**→ FIXED 2026-08-07.** Deleted. Nothing imported them, and the work they implied is
+already done elsewhere — `threshold.py` and `morphology.py` cover the binarisation
+placeholder, and `core/pipelines.py` now holds the orchestration role `engine.py` was
+scaffolded for.
 
 ### 8. Licensing metadata is absent
 
@@ -309,6 +320,58 @@ It rescues a genuinely skewed page decisively, but regresses `IMG_1595` at rest,
 enabling it by default is not justified on two samples. Revisit once more ground
 truth exists.
 
+**→ REVISITED 2026-08-07, and the conclusion reverses.** With 15 transcriptions
+instead of 2, deskew is worth 5.1 points corpus-wide at psm 3 (24.0% → 18.9% CER) at
+negligible time cost. The earlier hesitation was undersampling: `IMG_1595` is one of
+only two images it hurts.
+
+| Per-image CER delta at psm 3 | |
+| --- | --- |
+| `IMG_1648` | **−40.9%** |
+| `IMG_1658` | −18.8% |
+| `IMG_1601` | −9.5% |
+| `IMG_1603` | −6.8% |
+| `IMG_1594` | −1.6% |
+| `IMG_1657` | +4.3% |
+| `IMG_1595` | +7.5% |
+| 8 others | no change — no confident angle found |
+
+The `min_peak_ratio` guard is doing its job: on 8 of 15 images the filter declines to
+act at all, which is why four large wins cost only two modest regressions. Flipping
+the default is pending a decision.
+
+### 12. Tesseract's layout analysis shreds full-width text into column blocks
+
+Found 2026-08-07 while investigating `IMG_1595`'s 41% CER, which looked at first like
+lines being truncated mid-word:
+
+```
+line 12:  We are seeking an experienced Senior Project Sys
+line 65:  tems Specialist tc
+line 76:  y lead the management and optimization
+```
+
+Nothing is truncated. One sentence is cut into three vertical pieces and emitted far
+apart, because the advert has a two-column middle section between full-width
+paragraphs, and psm 3's page segmentation extends the column split through the
+full-width text, then reads each strip top-to-bottom.
+
+CER cannot distinguish this from a failure to read the page at all — it is
+order-sensitive, so correct text in the wrong sequence scores like missing text. That
+is what `word_miss_rate` was added for. `IMG_1595` at psm 3: **40.5% CER against 7.9%
+word miss.** The words are there; the order is not.
+
+**How common it is — and a correction.** The first psm-3 sweep flagged 6 of 15 images
+this way, and it looked like a corpus-wide segmentation problem. It largely is not.
+With deskew enabled, five of the six drop off the list — `IMG_1648` goes from 45.7%
+CER / 5.4% word miss to **4.8%**. So most of the shredding is *skew-induced*: a tilted
+page makes the layout analyser hallucinate column boundaries. Only `IMG_1595` is
+genuinely mis-segmented, and deskew makes it worse.
+
+Remaining options for that residual case: run psm 4 on a detected column region, split
+the page into column regions before OCR, or reorder Tesseract's blocks using the
+bounding boxes already present in the dataframe.
+
 ---
 
 ## Suggested order of work
@@ -327,11 +390,26 @@ Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
    to 0.00°. Fixing it exposed **#11**, below.
 6. ~~A skew estimator that works on photographs (#11)~~ — done 2026-08-02.
    Projection-profile search, exact on both real photos and synthetic scans.
-7. **More ground truth** — two transcriptions (`IMG_1594`, `IMG_1595`) currently
-   anchor every quality claim, and they disagree about whether deskew helps. More
-   would settle that and let `--deskew` become a default if warranted.
-   Convention: `<base>/text-of-<image stem>.md`, consumed by
-   `scripts/evaluate_cer.py`.
-8. **Composable pipelines via CLI (#2)** — unlocks A/B testing stacks against the
-   real corpus without editing source.
-9. **Tests (#6)**, then the cleanup items (#5, #7, #8, #9).
+7. ~~More ground truth~~ — done 2026-08-07. 15 transcriptions now exist against 16
+   photos (`IMG_1600` is the gap). This settled the deskew question; see #11.
+8. ~~Single Tesseract pass (#5)~~ — done 2026-08-07, ~45% faster.
+9. ~~Corpus evaluation harness~~ — done 2026-08-07. `scripts/evaluate_corpus.py`,
+   `src/acentos_ocr/eval/`. Sweeps psm × deskew across every transcribed image and
+   reports CER beside an order-insensitive word miss rate. Baseline in
+   `results/baseline-2026-08-07.json`.
+10. ~~Empty committed files (#7)~~ — done 2026-08-07.
+
+**Next:**
+
+1. **Decide the `--deskew` default** — the corpus says yes (24.0% → 18.9%); the
+   change itself is one line plus a docs pass.
+2. **Reading order for `IMG_1595` (#12)** — the one genuinely mis-segmented sample.
+3. **The floor cases** — `IMG_1599` (~34% CER in all six configurations) and
+   `IMG_1604` (~30%) do not move for any setting, and their word miss rates are high
+   too, so these are real recognition failures. Look at the photographs.
+4. **Composable pipelines via CLI (#2)** — now more valuable, because the harness
+   gives it something to measure against. Per-image oracle CER is 15.8% against
+   18.9% for the best fixed configuration, so roughly 3 points sit in per-image
+   adaptation.
+5. **Remaining cleanup** — #8 (licensing), #9 (`.cursorrules`), and per-filter tests
+   beyond deskew and the metrics (#6).

@@ -169,20 +169,82 @@ Three things worth knowing from those measurements:
 - Cost of `tessdata_best` is roughly 2× wall clock — `document.png` takes ~3.7s
   versus ~1.8s with the system models on a 4-core i7-1165G7.
 
+#### Corpus evaluation
+
+A single image cannot tell you whether a change helped — the first two
+transcriptions pointed opposite ways on `--deskew`. `scripts/evaluate_corpus.py`
+runs the whole transcribed corpus through a sweep of configurations:
+
+```bash
+export ACENTOS_CORPUS="/path/to/Cayman Job Clippings"
+uv run python scripts/evaluate_corpus.py --psm 3 4 6 --deskew both --per-image
+```
+
+Pairing is by filename: an image `IMG_1594.JPEG` anywhere under the root is matched
+with `text-of-IMG_1594.md`, also anywhere under the root. Images with no
+transcription are listed rather than silently skipped.
+
+It reports two metrics side by side, and **the gap between them is the point**:
+
+| Metric | Sensitive to order? | Answers |
+| --- | --- | --- |
+| CER | yes | what you actually get out of the pipeline |
+| word miss rate | no | what the recogniser managed to read |
+
+- Both low → the page was read correctly.
+- Both high → a recognition failure; the words genuinely are not there.
+- **CER high, word miss low** → the words were recognised and then emitted in the
+  wrong order. That is a page-segmentation failure, and no amount of image
+  preprocessing will fix it.
+
+Rates are micro-averaged (errors and lengths summed separately) so a two-line
+advert cannot outweigh a full page. `--json` writes the raw per-image rows for
+comparison against a later run.
+
+Baseline across 15 transcribed Cayman job listings, `--lang eng`, 2026-08-07
+(`results/baseline-2026-08-07.json`):
+
+| Configuration | CER | word miss | confidence |
+| --- | --- | --- | --- |
+| **psm 3 + deskew** | **18.9%** | 10.7% | 88.1% |
+| psm 6 | 22.3% | 12.1% | 84.4% |
+| psm 6 + deskew | 22.3% | 11.9% | 84.3% |
+| psm 4 + deskew | 23.6% | 11.2% | 87.4% |
+| psm 3 *(current default)* | 24.0% | 11.6% | 87.1% |
+| psm 4 | 27.6% | 12.9% | 86.3% |
+
+No single mode wins everywhere. Choosing the best configuration per image would
+reach 15.8% — the ~3-point gap under the best fixed setting is what per-image
+adaptation is worth, and it is much smaller than the 5-point deskew effect below.
+
+Two images (`IMG_1599`, `IMG_1604`) sit near 30–34% in *every* configuration with
+correspondingly high word miss rates. Those are genuine recognition failures, not
+tuning problems.
+
 #### Deskew (`--deskew`)
 
-Off by default, because it helps decisively on a tilted page and hurts on a straight
-one. Measured CER:
+Currently off by default, though **the corpus now says it should be on** — 24.0% →
+18.9% CER at psm 3, for negligible extra time. Per-image delta:
 
-| Image | Rotation | Without | With `--deskew` |
-| --- | --- | --- | --- |
-| `IMG_1594` | as shot (+2.0° tilt) | 8.9% | **7.3%** |
-| `IMG_1594` | −4° added | 45.3% | **7.3%** |
-| `IMG_1595` | as shot (+1.7° tilt) | **41.0%** | 48.4% |
-| `IMG_1595` | +3° added | 57.7% | **46.7%** |
+| Image | CER change with `--deskew` |
+| --- | --- |
+| `IMG_1648` | **−40.9%** |
+| `IMG_1658` | −18.8% |
+| `IMG_1601` | −9.5% |
+| `IMG_1603` | −6.8% |
+| `IMG_1594` | −1.6% |
+| `IMG_1657` | +4.3% |
+| `IMG_1595` | +7.5% |
+| 8 others | unchanged — no confident angle found |
 
-Reach for it when a photo is visibly tilted. Two ground-truth samples disagree about
-whether it pays on an already-straight page, so it is not yet a default.
+Four large wins against two modest regressions, because on more than half the corpus
+the filter finds no confident angle and declines to act rather than guessing.
+
+Note what the largest win actually is. `IMG_1648` improves by 41 points not because
+its characters were unreadable, but because its skew made Tesseract's layout analysis
+invent column boundaries and shred the page into out-of-order blocks — 45.7% CER
+against a 5.4% word miss rate. Straightening the page fixed the segmentation. Skew
+damage and reading-order damage are frequently the same bug.
 
 > **The confidence figures are Tesseract's self-assessment, not accuracy.** A model
 > can be confidently wrong. Treat the confidence table as a regression check — "did

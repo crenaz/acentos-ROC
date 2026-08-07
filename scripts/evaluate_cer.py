@@ -22,47 +22,19 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
+from acentos_ocr.config import resolve_tessdata_dir
+from acentos_ocr.core.pipelines import build_default_pipeline
+from acentos_ocr.eval.metrics import cer, normalise, word_miss_rate
 from acentos_ocr.ocr.tesseract_wrapper import TesseractWrapper
 from acentos_ocr.utils.image_io import load_image
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from main import build_default_pipeline, resolve_tessdata_dir  # noqa: E402
 
 
 def default_truth_path(image: Path) -> Path:
     """Apply the corpus convention: <base>/text-of-<stem>.md, two levels up."""
     return image.resolve().parents[2] / f"text-of-{image.stem}.md"
-
-
-def normalise(text: str) -> str:
-    """
-    Strip markdown scaffolding and collapse whitespace.
-
-    The transcriptions are written as Markdown, the OCR output is plain text, so
-    comparing them raw would score formatting rather than recognition.
-    """
-    text = re.sub(r"^#+\s*", "", text, flags=re.M)       # headings
-    text = re.sub(r"^[.·*-]\s*", "", text, flags=re.M)  # bullets, incl. U+00B7
-    text = re.sub(r"\s+", " ", text)
-    return text.strip().lower()
-
-
-def levenshtein(a: str, b: str) -> int:
-    if len(a) < len(b):
-        a, b = b, a
-    previous = list(range(len(b) + 1))
-    for i, char_a in enumerate(a, start=1):
-        current = [i]
-        for j, char_b in enumerate(b, start=1):
-            current.append(
-                min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (char_a != char_b))
-            )
-        previous = current
-    return previous[-1]
 
 
 def main() -> int:
@@ -91,14 +63,15 @@ def main() -> int:
 
     print(f"image:  {args.image}")
     print(f"truth:  {truth_path}  ({len(truth)} chars normalised)\n")
-    print(f"  {'psm':>4} {'CER':>8} {'confidence':>12}")
-    print("  " + "-" * 26)
+    print(f"  {'psm':>4} {'CER':>8} {'word miss':>11} {'confidence':>12}")
+    print("  " + "-" * 38)
 
+    processed = build_default_pipeline().run(image)
     for psm in args.psm:
-        processed = build_default_pipeline().run(image)
         result = ocr.process_image(processed, custom_config=f"--oem {args.oem} --psm {psm}")
-        cer = levenshtein(truth, normalise(result.text)) / len(truth)
-        print(f"  {psm:>4} {cer:>7.1%} {result.confidence:>11.2f}%")
+        hypothesis = normalise(result.text)
+        print(f"  {psm:>4} {cer(truth, hypothesis):>7.1%} "
+              f"{word_miss_rate(truth, hypothesis):>10.1%} {result.confidence:>11.2f}%")
 
     return 0
 
