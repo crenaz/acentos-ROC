@@ -130,7 +130,7 @@ Flags:
 - `--debug`: prints each pipeline step with its shape and dtype, reports which tessdata directory was used, and writes **every intermediate image** to the `debug/` directory.
 - `--psm`: Tesseract Page Segmentation Mode (6 works well for blocks of text).
 - `--lang`: Tesseract language code. Defaults to `spa+eng`.
-- `--deskew`: correct page skew before OCR. **Off by default** — see below.
+- `--deskew` / `--no-deskew`: correct page skew before OCR. **On by default** — see below.
 - `--oem`: OCR Engine Mode — `1` (LSTM) or `3` (default). Legacy modes are gone in Tesseract 5.
 - `--tessdata-dir`: override the language-model directory (defaults to project-local `tessdata/`).
 - `--tesseract-cmd`: override path to Tesseract binary if needed (default is usually `/usr/bin/tesseract`).
@@ -145,7 +145,10 @@ With the default filter stack at `--psm 6`, the committed sample images score:
 | Tesseract 4.1.1, system models, `--lang spa+eng`, binarising stack | 81.73% | 56.21% |
 | Tesseract 5.5.1, system models, `--lang spa+eng`, binarising stack | 84.44% | 61.23% |
 | Tesseract 5.5.1, `tessdata_best`, `--lang spa+eng`, binarising stack | 82.74% | 64.47% |
-| **Current default** — grayscale + blur3, `--psm 3` | **83.69%** | **95.17%** |
+| **Current default** — grayscale + deskew + blur3, `--psm 3` | **83.69%** | **95.17%** |
+
+Both samples are flat-scanned, so the deskew estimator finds no confident angle and
+declines to act; enabling it by default left these two figures untouched.
 
 #### Ground truth (the metric that matters)
 
@@ -155,7 +158,8 @@ listing, via `scripts/evaluate_cer.py`:
 | Pipeline | `--psm 3` | `--psm 4` | `--psm 6` |
 | --- | --- | --- | --- |
 | Old binarising stack | 34.4% | 30.5% | 51.9% |
-| **Current: grayscale + blur3** | **8.9%** | **8.9%** | 16.2% |
+| Grayscale + blur3 | 8.9% | 8.9% | 16.2% |
+| **Current: grayscale + deskew + blur3** | **7.3%** | 10.3% | 14.4% |
 
 Three things worth knowing from those measurements:
 
@@ -206,11 +210,11 @@ Baseline across 15 transcribed Cayman job listings, `--lang eng`, 2026-08-07
 
 | Configuration | CER | word miss | confidence |
 | --- | --- | --- | --- |
-| **psm 3 + deskew** | **18.9%** | 10.7% | 88.1% |
+| **psm 3 + deskew** *(current default)* | **18.9%** | 10.7% | 88.1% |
 | psm 6 | 22.3% | 12.1% | 84.4% |
 | psm 6 + deskew | 22.3% | 11.9% | 84.3% |
 | psm 4 + deskew | 23.6% | 11.2% | 87.4% |
-| psm 3 *(current default)* | 24.0% | 11.6% | 87.1% |
+| psm 3 *(previous default)* | 24.0% | 11.6% | 87.1% |
 | psm 4 | 27.6% | 12.9% | 86.3% |
 
 No single mode wins everywhere. Choosing the best configuration per image would
@@ -223,8 +227,8 @@ tuning problems.
 
 #### Deskew (`--deskew`)
 
-Currently off by default, though **the corpus now says it should be on** — 24.0% →
-18.9% CER at psm 3, for negligible extra time. Per-image delta:
+**On by default** as of 2026-08-07 — worth 5.1 points corpus-wide (24.0% → 18.9% CER
+at psm 3) for negligible extra time. Pass `--no-deskew` to disable. Per-image delta:
 
 | Image | CER change with `--deskew` |
 | --- | --- |

@@ -5,19 +5,32 @@
 **Scope:** structural review of the project layout, packaging, and OCR pipeline.
 
 > **Status note:** Findings #1–#9 are preserved as originally written, describing the
-> state at `f5c0083`. Findings #10 and #11 were added later, on the same date, and
-> describe defects found while working on the others — both are dated and marked.
+> state at `f5c0083`. Findings #10–#12 were added later while working on the others —
+> each is dated and marked.
 >
-> Current status as of 2026-08-02:
+> Current status as of 2026-08-07:
 > - **#1 — fixed** (commit `4607546`).
 > - **#3 — fixed**, but its stated diagnosis was **wrong**. See the correction below.
 > - **#4 — fixed** (commit `82dc59b`): every pipeline stage is written to disk
 >   under `--debug`.
+> - **#5 — fixed** (2026-08-07): one Tesseract pass per image instead of two, ~45%
+>   faster.
+> - **#7 — fixed** (2026-08-07): the three empty scaffolded modules are deleted.
+> - **#9 — fixed**: `.cursorrules` names the `acentos_ocr` paths.
 > - **#10 — fixed**: the sign inversion is corrected and covered by tests. Fixing it
 >   exposed **#11**.
 > - **#11 — fixed**: the estimator is replaced by a projection-profile search that
->   works on photographs. Deskew is opt-in via `--deskew`, not default.
-> - **#2, #5–#9 — open.**
+>   works on photographs. **Deskew became the default on 2026-08-07**, once a
+>   15-image corpus replaced the two samples that had disagreed about it.
+> - **#12 — open**, and the largest remaining quality item: Tesseract's layout
+>   analysis shreds full-width text into column blocks. Mostly skew-induced, so
+>   enabling deskew resolved all but one case.
+> - **#2, #6, #8 — open.**
+>
+> Quality is now measured across the whole transcribed corpus by
+> `scripts/evaluate_corpus.py`, not on single images. Baseline: **18.9% CER** at the
+> current defaults, against 24.0% before deskew and roughly 30% for the original
+> binarising stack.
 
 > ### Correction to finding #3 (2026-08-02)
 >
@@ -337,8 +350,12 @@ only two images it hurts.
 | 8 others | no change — no confident angle found |
 
 The `min_peak_ratio` guard is doing its job: on 8 of 15 images the filter declines to
-act at all, which is why four large wins cost only two modest regressions. Flipping
-the default is pending a decision.
+act at all, which is why four large wins cost only two modest regressions.
+
+**→ Default flipped 2026-08-07.** `--deskew` is now on; `--no-deskew` disables it.
+The two committed sample images (`fluoxetine.png`, `document.png`) are flat scans
+where the estimator finds no angle, so their baselines are unchanged at 83.69% and
+95.17% — the flip is a no-op on clean scans and only acts on handheld photographs.
 
 ### 12. Tesseract's layout analysis shreds full-width text into column blocks
 
@@ -399,17 +416,19 @@ Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
    `results/baseline-2026-08-07.json`.
 10. ~~Empty committed files (#7)~~ — done 2026-08-07.
 
+11. ~~Flip the `--deskew` default~~ — done 2026-08-07. Also fixed `main.py --help`,
+    which had always crashed: an unescaped `%` in the `--psm` help text parsed as a
+    `%c` conversion when argparse formatted it.
+
 **Next:**
 
-1. **Decide the `--deskew` default** — the corpus says yes (24.0% → 18.9%); the
-   change itself is one line plus a docs pass.
-2. **Reading order for `IMG_1595` (#12)** — the one genuinely mis-segmented sample.
-3. **The floor cases** — `IMG_1599` (~34% CER in all six configurations) and
+1. **Reading order for `IMG_1595` (#12)** — the one genuinely mis-segmented sample.
+2. **The floor cases** — `IMG_1599` (~34% CER in all six configurations) and
    `IMG_1604` (~30%) do not move for any setting, and their word miss rates are high
    too, so these are real recognition failures. Look at the photographs.
-4. **Composable pipelines via CLI (#2)** — now more valuable, because the harness
+3. **Composable pipelines via CLI (#2)** — now more valuable, because the harness
    gives it something to measure against. Per-image oracle CER is 15.8% against
    18.9% for the best fixed configuration, so roughly 3 points sit in per-image
    adaptation.
-5. **Remaining cleanup** — #8 (licensing), #9 (`.cursorrules`), and per-filter tests
+4. **Remaining cleanup** — #8 (licensing), #9 (`.cursorrules`), and per-filter tests
    beyond deskew and the metrics (#6).

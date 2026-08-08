@@ -48,6 +48,8 @@ def main() -> int:
                         help="One or more page segmentation modes to compare.")
     parser.add_argument("--oem", type=int, default=3, choices=(1, 3))
     parser.add_argument("--tessdata-dir", default=None)
+    parser.add_argument("--deskew", action=argparse.BooleanOptionalAction, default=True,
+                        help="Match the default pipeline's deskew setting (on).")
     args = parser.parse_args()
 
     truth_path = args.truth or default_truth_path(args.image)
@@ -66,7 +68,7 @@ def main() -> int:
     print(f"  {'psm':>4} {'CER':>8} {'word miss':>11} {'confidence':>12}")
     print("  " + "-" * 38)
 
-    processed = build_default_pipeline().run(image)
+    processed = build_default_pipeline(deskew=args.deskew).run(image)
     for psm in args.psm:
         result = ocr.process_image(processed, custom_config=f"--oem {args.oem} --psm {psm}")
         hypothesis = normalise(result.text)

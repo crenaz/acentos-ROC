@@ -31,10 +31,12 @@ def main() -> None:
     )
     parser.add_argument(
         "--deskew",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
-            "Correct page skew before OCR. Worth it for handheld photos of tilted "
-            "pages; measurably harmful on pages that are already straight."
+            "Correct page skew before OCR. On by default: worth 5.1 points of "
+            "character error rate across the corpus. Pass --no-deskew to disable "
+            "it, which helps on the minority of pages that are already straight."
         ),
     )
     parser.add_argument(
@@ -53,8 +55,10 @@ def main() -> None:
         default=3,
         help=(
             "Tesseract page segmentation mode (PSM). Defaults to 3 (fully "
-            "automatic). On the Cayman clipping sample, psm 3 measured 8.9% "
-            "character error rate against psm 6's 16.2%."
+            # Literal percent signs must be doubled: argparse runs help text
+            # through %-formatting, and "8.9% c" parses as a %c conversion.
+            "automatic). Across the 15-image Cayman corpus, psm 3 measured "
+            "18.9%% character error rate against psm 6's 22.3%%."
         ),
     )
     parser.add_argument(
