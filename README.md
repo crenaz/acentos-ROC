@@ -223,9 +223,28 @@ No single mode wins everywhere. Choosing the best configuration per image would
 reach 15.8% — the ~3-point gap under the best fixed setting is what per-image
 adaptation is worth, and it is much smaller than the 5-point deskew effect below.
 
-Two images (`IMG_1599`, `IMG_1604`) sit near 30–34% in *every* configuration with
-correspondingly high word miss rates. Those are genuine recognition failures, not
-tuning problems.
+Two images (`IMG_1599`, `IMG_1604`) sit near 30% in *every* configuration with
+correspondingly high word miss rates. Those are recognition failures, and they are
+**capture-limited rather than pipeline-limited** — both are dominated by perspective
+and curvature rather than rotation, which a single global deskew cannot correct, and
+`IMG_1604`'s text is only 31px tall.
+
+Two remedies were tried and measured across the corpus. Neither works, so they are
+recorded here rather than retried:
+
+| Attempt | Corpus CER |
+| --- | --- |
+| baseline | **12.0%** |
+| `--scale 1.5` | 12.7% |
+| `--scale 2` | 12.6% |
+| drop words below confidence 30 | 12.2% |
+| drop words below confidence 60 | 13.3% |
+
+Upscaling looks convincing on one sample — `IMG_1599` alone goes 32.2% → 22.9% at
+×1.5 — and the corpus flatly contradicts it. The per-image pattern is scatter, not
+signal: `IMG_1646` reaches 0.8% at ×2 while four other images get worse. That is
+Tesseract's layout analysis reacting to a different input size, not a resolution
+effect, and it is a good illustration of why single-image results are not evidence.
 
 #### Deskew (`--deskew`)
 

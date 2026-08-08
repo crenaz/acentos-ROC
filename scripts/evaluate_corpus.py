@@ -35,6 +35,8 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 
+import cv2
+
 from acentos_ocr.config import resolve_tessdata_dir
 from acentos_ocr.core.pipelines import build_default_pipeline
 from acentos_ocr.eval import CORPUS_ENV_VAR, Sample, default_root, discover
@@ -54,6 +56,7 @@ class Config:
     psm: int
     deskew: bool
     reading_order: bool = False
+    scale: float = 1.0
 
     @property
     def label(self) -> str:
@@ -61,6 +64,7 @@ class Config:
             f"psm {self.psm}"
             + (" +deskew" if self.deskew else "")
             + (" +order" if self.reading_order else "")
+            + ("" if self.scale == 1.0 else f" x{self.scale:g}")
         )
 
 
@@ -82,38 +86,43 @@ def _evaluate(job: dict) -> list[dict]:
     )
 
     rows = []
-    for psm in job["psms"]:
-        started = time.perf_counter()
-        result = ocr.process_image(
-            processed, custom_config=f"--oem {job['oem']} --psm {psm}"
+    for scale in job["scales"]:
+        scaled = processed if scale == 1.0 else cv2.resize(
+            processed, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC
         )
-        elapsed = time.perf_counter() - started
-
-        # Geometric reordering reuses the word boxes this pass already returned, so
-        # both orderings are scored from one OCR run rather than two.
-        candidates = {False: result.text}
-        if job["reading_order"]:
-            candidates[True] = reorder(result.metadata) or result.text
-
-        for reading_order, text in candidates.items():
-            hypothesis = normalise(text)
-            distance, truth_chars = edit_counts(truth, hypothesis)
-            missed, truth_words = word_miss_counts(truth, hypothesis)
-
-            rows.append(
-                {
-                    "stem": Path(job["image"]).stem,
-                    "psm": psm,
-                    "deskew": job["deskew"],
-                    "reading_order": reading_order,
-                    "distance": distance,
-                    "truth_chars": truth_chars,
-                    "missed": missed,
-                    "truth_words": truth_words,
-                    "confidence": result.confidence,
-                    "seconds": elapsed,
-                }
+        for psm in job["psms"]:
+            started = time.perf_counter()
+            result = ocr.process_image(
+                scaled, custom_config=f"--oem {job['oem']} --psm {psm}"
             )
+            elapsed = time.perf_counter() - started
+
+            # Geometric reordering reuses the word boxes this pass already
+            # returned, so both orderings are scored from one OCR run.
+            candidates = {False: result.text}
+            if job["reading_order"]:
+                candidates[True] = reorder(result.metadata) or result.text
+
+            for reading_order, text in candidates.items():
+                hypothesis = normalise(text)
+                distance, truth_chars = edit_counts(truth, hypothesis)
+                missed, truth_words = word_miss_counts(truth, hypothesis)
+
+                rows.append(
+                    {
+                        "stem": Path(job["image"]).stem,
+                        "psm": psm,
+                        "deskew": job["deskew"],
+                        "reading_order": reading_order,
+                        "scale": scale,
+                        "distance": distance,
+                        "truth_chars": truth_chars,
+                        "missed": missed,
+                        "truth_words": truth_words,
+                        "confidence": result.confidence,
+                        "seconds": elapsed,
+                    }
+                )
     return rows
 
 
@@ -123,6 +132,7 @@ def _select(rows: list[dict], config: Config) -> list[dict]:
         if r["psm"] == config.psm
         and r["deskew"] == config.deskew
         and r["reading_order"] == config.reading_order
+        and r["scale"] == config.scale
     ]
 
 
@@ -198,7 +208,8 @@ def _print_order_damage(rows: list[dict], stems: list[str]) -> None:
     print(f"  {'image':<12} {'best config':<16} {'CER':>8} {'word miss':>11} {'gap':>8}")
     print("  " + "-" * 58)
     for stem, cer, miss, best in sorted(flagged, key=lambda f: f[2] - f[1]):
-        label = Config(best["psm"], best["deskew"], best["reading_order"]).label
+        label = Config(best["psm"], best["deskew"], best["reading_order"],
+                       best["scale"]).label
         print(f"  {stem:<12} {label:<16} {cer:>7.1%} {miss:>10.1%} {cer - miss:>7.1%}")
 
 
@@ -212,6 +223,9 @@ def main() -> int:
                         help="Page segmentation modes to compare.")
     parser.add_argument("--deskew", choices=("off", "on", "both"), default="both",
                         help="Whether to sweep the deskew filter.")
+    parser.add_argument("--scale", type=float, nargs="+", default=[1.0],
+                        help="Upscale factors to sweep. Tesseract struggles below "
+                             "roughly 30px of text height.")
     parser.add_argument("--reading-order", choices=("off", "on", "both"), default="both",
                         help="Whether to sweep geometric reading-order reconstruction. "
                              "Costs no extra OCR: it reuses the word boxes.")
@@ -243,9 +257,10 @@ def main() -> int:
     deskews = choice[args.deskew]
     orders = choice[args.reading_order]
     configs = [
-        Config(psm, deskew, order)
+        Config(psm, deskew, order, scale)
         for deskew in deskews
         for order in orders
+        for scale in args.scale
         for psm in args.psm
     ]
     tessdata_dir = resolve_tessdata_dir(args.tessdata_dir)
@@ -265,6 +280,7 @@ def main() -> int:
             "truth": str(sample.truth),
             "deskew": deskew,
             "psms": args.psm,
+            "scales": args.scale,
             "reading_order": True in orders,
             "lang": args.lang,
             "oem": args.oem,

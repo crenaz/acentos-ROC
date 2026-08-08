@@ -5,7 +5,7 @@
 **Scope:** structural review of the project layout, packaging, and OCR pipeline.
 
 > **Status note:** Findings #1–#9 are preserved as originally written, describing the
-> state at `f5c0083`. Findings #10–#12 were added later while working on the others —
+> state at `f5c0083`. Findings #10–#13 were added later while working on the others —
 > each is dated and marked.
 >
 > Current status as of 2026-08-07:
@@ -26,6 +26,9 @@
 >   15-image corpus replaced the two samples that had disagreed about it.
 > - **#12 — fixed** (2026-08-07): geometric reading-order reconstruction in
 >   `src/acentos_ocr/layout/`. Corpus CER 18.9% → 12.0%.
+> - **#13 — investigated, closed as capture-limited** (2026-08-07): the two worst
+>   images fail on perspective and small text, and neither upscaling nor confidence
+>   filtering helps corpus-wide.
 > - **#2, #8 — open.**
 >
 > Quality is now measured across the whole transcribed corpus by
@@ -498,24 +501,83 @@ Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
     which had always crashed: an unescaped `%` in the `--psm` help text parsed as a
     `%c` conversion when argparse formatted it.
 
+### 13. The floor cases are capture-limited, not pipeline-limited — INVESTIGATED
+
+`IMG_1599` (32.2% CER, 28.8% word miss) and `IMG_1604` (30.3% / 27.0%) are the two
+worst images in the corpus by a wide margin and do not respond to any configuration.
+Their word miss rates track their CER, so unlike #12 this is recognition failing
+rather than ordering.
+
+**What is actually wrong with each**
+
+`IMG_1599` loses inter-word spacing. Tesseract returns `experienceinfast-pacedfine`
+as one token, and splits others across the break (`experi` / `perience,`, `tendi` /
+`ending`). The advert is set in condensed type with tight tracking, and the photo is
+slightly soft; between them the word gaps stop being resolvable. The remaining errors
+are ordinary character confusions — `kirchsn` for "kitchen", `nimum` for "minimum",
+`y5d4gy` for "Y5D4G7".
+
+`IMG_1604` is a narrow column shot at an angle. Its median word height is **31px**,
+the smallest in the corpus, and the worst-distorted corner is where the letterhead
+sits: `rawlinso`, `unter`, `caymar`, `|slands`. It also picks up the newspaper's own
+page furniture (`weekly, 17 23 july 2026`) and single-character noise from the
+adjacent article down the left edge, giving it a 40% insertion rate.
+
+Both are dominated by **perspective and curvature rather than rotation** — in
+`IMG_1599` the top lines are level while the bottom ones fan upward. `DeskewFilter`
+applies a single global rotation and is structurally unable to correct that.
+
+**Two things that did not work**, both measured across the whole corpus so they are
+not worth retrying:
+
+| Attempt | Corpus CER |
+| --- | --- |
+| baseline | **12.0%** |
+| upscale ×1.5 | 12.7% |
+| upscale ×2 | 12.6% |
+| drop words below conf 30 | 12.2% |
+| drop words below conf 60 | 13.3% |
+
+Upscaling looked promising on a single sample — `IMG_1599` alone goes 32.2% → 22.9%
+at ×1.5 — but the corpus says otherwise, and the per-image pattern is scatter rather
+than signal: `IMG_1646` improves to 0.8% at ×2 while `IMG_1595`, `IMG_1602`,
+`IMG_1603` and `IMG_1649` all get worse. That is Tesseract's layout analysis jittering
+under a different input size, not a resolution effect. Confidence filtering is
+monotonically worse: it trims some of `IMG_1604`'s noise (30.3% → 27.4% at 30) and
+badly damages `IMG_1599` (32.2% → 40.1% at 60), whose real words carry low confidence
+precisely because it is soft.
+
+The `--scale` sweep added to `scripts/evaluate_corpus.py` during this work is kept —
+the dimension is worth having, and now has a recorded answer.
+
+**Conclusion:** these two need better photographs, not better code. Shot square-on
+and closer, both would likely fall in line with the rest of the corpus. Dewarping is
+the only code-side fix that would help, and it is a much larger undertaking than
+anything attempted so far — worth revisiting only if a meaningful share of future
+captures turn out this distorted.
+
+**One ground-truth defect found.** `text-of-IMG_1599.md` opens with
+`# SILVERERSIDE Restaurant`; the logo in the photograph reads **SILVERSIDE**. A small
+share of that image's measured error is therefore unearnable. Worth a scan of the
+other transcriptions for similar slips before trusting any single image's number.
+
+---
+
 **Next:**
 
-1. **The floor cases** — `IMG_1599` (32.2% CER, 28.8% word miss) and `IMG_1604`
-   (30.3% / 27.0%) barely move for any setting, and their word miss rates track
-   their CER, so these are genuine recognition failures rather than layout or
-   tuning problems. Now the two worst images in the corpus by a wide margin. Look
-   at the photographs.
-2. **Composable pipelines via CLI (#2)** — the last structural finding, and the
+1. **Composable pipelines via CLI (#2)** — the last structural finding, and the
    harness now gives it something to measure against. Note the headroom figure
    needs recomputing: the 15.8% per-image oracle was measured before deskew and
    reading order became defaults, against a fixed baseline that has since improved
    from 18.9% to 12.0%.
-3. **Per-filter tests (#6)** — 74 tests exist, but of the nine filters only
+2. **Per-filter tests (#6)** — 74 tests exist, but of the nine filters only
    `DeskewFilter` is directly covered. `CLAHEFilter`, `ResizeFilter`,
    `MorphologyFilter` and `AdaptiveThresholdFilter` are the ones no measurement
    currently protects.
-4. **Licensing metadata (#8)** — `pyproject.toml` still has no `license` field and
+3. **Licensing metadata (#8)** — `pyproject.toml` still has no `license` field and
    the README says nothing about licensing.
-5. **Corpus housekeeping** — `IMG_1600.JPEG` has no transcription, and the two
-   committed sample images are still a pill label and a Spanish book page rather
-   than anything resembling the target corpus.
+4. **Corpus housekeeping** — `IMG_1600.JPEG` has no transcription; the
+   `text-of-IMG_1599.md` heading reads `SILVERERSIDE` where the logo reads
+   `SILVERSIDE`, and the other transcriptions are worth a scan for similar slips;
+   and the two committed sample images are still a pill label and a Spanish book
+   page rather than anything resembling the target corpus.
