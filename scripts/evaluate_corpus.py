@@ -39,6 +39,7 @@ from acentos_ocr.config import resolve_tessdata_dir
 from acentos_ocr.core.pipelines import build_default_pipeline
 from acentos_ocr.eval import CORPUS_ENV_VAR, Sample, default_root, discover
 from acentos_ocr.eval.metrics import edit_counts, normalise, word_miss_counts
+from acentos_ocr.layout.reading_order import reorder
 from acentos_ocr.ocr.tesseract_wrapper import TesseractWrapper
 from acentos_ocr.utils.image_io import load_image
 
@@ -52,10 +53,15 @@ ORDER_DAMAGE_THRESHOLD = 0.10
 class Config:
     psm: int
     deskew: bool
+    reading_order: bool = False
 
     @property
     def label(self) -> str:
-        return f"psm {self.psm}" + (" +deskew" if self.deskew else "")
+        return (
+            f"psm {self.psm}"
+            + (" +deskew" if self.deskew else "")
+            + (" +order" if self.reading_order else "")
+        )
 
 
 def _evaluate(job: dict) -> list[dict]:
@@ -71,7 +77,9 @@ def _evaluate(job: dict) -> list[dict]:
     image = load_image(job["image"])
     processed = build_default_pipeline(deskew=job["deskew"]).run(image)
 
-    ocr = TesseractWrapper(lang=job["lang"], tessdata_dir=job["tessdata_dir"])
+    ocr = TesseractWrapper(
+        lang=job["lang"], tessdata_dir=job["tessdata_dir"], reading_order=False
+    )
 
     rows = []
     for psm in job["psms"]:
@@ -81,24 +89,41 @@ def _evaluate(job: dict) -> list[dict]:
         )
         elapsed = time.perf_counter() - started
 
-        hypothesis = normalise(result.text)
-        distance, truth_chars = edit_counts(truth, hypothesis)
-        missed, truth_words = word_miss_counts(truth, hypothesis)
+        # Geometric reordering reuses the word boxes this pass already returned, so
+        # both orderings are scored from one OCR run rather than two.
+        candidates = {False: result.text}
+        if job["reading_order"]:
+            candidates[True] = reorder(result.metadata) or result.text
 
-        rows.append(
-            {
-                "stem": Path(job["image"]).stem,
-                "psm": psm,
-                "deskew": job["deskew"],
-                "distance": distance,
-                "truth_chars": truth_chars,
-                "missed": missed,
-                "truth_words": truth_words,
-                "confidence": result.confidence,
-                "seconds": elapsed,
-            }
-        )
+        for reading_order, text in candidates.items():
+            hypothesis = normalise(text)
+            distance, truth_chars = edit_counts(truth, hypothesis)
+            missed, truth_words = word_miss_counts(truth, hypothesis)
+
+            rows.append(
+                {
+                    "stem": Path(job["image"]).stem,
+                    "psm": psm,
+                    "deskew": job["deskew"],
+                    "reading_order": reading_order,
+                    "distance": distance,
+                    "truth_chars": truth_chars,
+                    "missed": missed,
+                    "truth_words": truth_words,
+                    "confidence": result.confidence,
+                    "seconds": elapsed,
+                }
+            )
     return rows
+
+
+def _select(rows: list[dict], config: Config) -> list[dict]:
+    return [
+        r for r in rows
+        if r["psm"] == config.psm
+        and r["deskew"] == config.deskew
+        and r["reading_order"] == config.reading_order
+    ]
 
 
 def _rate(rows: list[dict], numerator: str, denominator: str) -> float:
@@ -113,13 +138,10 @@ def _print_summary(rows: list[dict], configs: list[Config]) -> None:
 
     ranked = sorted(
         configs,
-        key=lambda c: _rate(
-            [r for r in rows if r["psm"] == c.psm and r["deskew"] == c.deskew],
-            "distance", "truth_chars",
-        ),
+        key=lambda c: _rate(_select(rows, c), "distance", "truth_chars"),
     )
     for config in ranked:
-        subset = [r for r in rows if r["psm"] == config.psm and r["deskew"] == config.deskew]
+        subset = _select(rows, config)
         if not subset:
             continue
         confidence = sum(r["confidence"] for r in subset) / len(subset)
@@ -141,10 +163,7 @@ def _print_per_image(rows: list[dict], configs: list[Config], stems: list[str]) 
     for stem in stems:
         cells = {}
         for config in configs:
-            match = [
-                r for r in rows
-                if r["stem"] == stem and r["psm"] == config.psm and r["deskew"] == config.deskew
-            ]
+            match = [r for r in _select(rows, config) if r["stem"] == stem]
             cells[config] = _rate(match, "distance", "truth_chars") if match else None
 
         scored = {c: v for c, v in cells.items() if v is not None}
@@ -179,7 +198,7 @@ def _print_order_damage(rows: list[dict], stems: list[str]) -> None:
     print(f"  {'image':<12} {'best config':<16} {'CER':>8} {'word miss':>11} {'gap':>8}")
     print("  " + "-" * 58)
     for stem, cer, miss, best in sorted(flagged, key=lambda f: f[2] - f[1]):
-        label = Config(best["psm"], best["deskew"]).label
+        label = Config(best["psm"], best["deskew"], best["reading_order"]).label
         print(f"  {stem:<12} {label:<16} {cer:>7.1%} {miss:>10.1%} {cer - miss:>7.1%}")
 
 
@@ -193,6 +212,9 @@ def main() -> int:
                         help="Page segmentation modes to compare.")
     parser.add_argument("--deskew", choices=("off", "on", "both"), default="both",
                         help="Whether to sweep the deskew filter.")
+    parser.add_argument("--reading-order", choices=("off", "on", "both"), default="both",
+                        help="Whether to sweep geometric reading-order reconstruction. "
+                             "Costs no extra OCR: it reuses the word boxes.")
     parser.add_argument("--lang", default="eng",
                         help="Tesseract language code. The Cayman corpus is English.")
     parser.add_argument("--oem", type=int, default=3, choices=(1, 3))
@@ -217,8 +239,15 @@ def main() -> int:
     if not samples:
         parser.error(f"No image/transcription pairs found under {root}")
 
-    deskews = {"off": [False], "on": [True], "both": [False, True]}[args.deskew]
-    configs = [Config(psm, deskew) for deskew in deskews for psm in args.psm]
+    choice = {"off": [False], "on": [True], "both": [False, True]}
+    deskews = choice[args.deskew]
+    orders = choice[args.reading_order]
+    configs = [
+        Config(psm, deskew, order)
+        for deskew in deskews
+        for order in orders
+        for psm in args.psm
+    ]
     tessdata_dir = resolve_tessdata_dir(args.tessdata_dir)
 
     print(f"corpus:   {root}")
@@ -236,6 +265,7 @@ def main() -> int:
             "truth": str(sample.truth),
             "deskew": deskew,
             "psms": args.psm,
+            "reading_order": True in orders,
             "lang": args.lang,
             "oem": args.oem,
             "tessdata_dir": str(tessdata_dir) if tessdata_dir else None,

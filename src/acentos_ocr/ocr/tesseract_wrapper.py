@@ -10,6 +10,8 @@ import pytesseract
 from PIL import Image
 import cv2
 
+from ..layout.reading_order import reorder
+
 
 @dataclass
 class OCRResult:
@@ -32,12 +34,14 @@ class TesseractWrapper:
         tesseract_cmd: str | None = None,
         lang: str = "spa+eng",
         tessdata_dir: str | Path | None = None,
+        reading_order: bool = True,
     ) -> None:
         if tesseract_cmd:
             pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
         self.lang = lang
         self.tessdata_dir = Path(tessdata_dir) if tessdata_dir else None
+        self.reading_order = reading_order
         self.default_config = "--oem 3 --psm 3"
 
         if self.tessdata_dir is not None:
@@ -109,7 +113,9 @@ class TesseractWrapper:
         clean_data["text"] = clean_data["text"].astype(str).str.strip()
         clean_data = clean_data[clean_data["text"] != ""]
 
-        full_text = self._reconstruct_text(clean_data)
+        full_text = reorder(clean_data) if self.reading_order else None
+        if full_text is None:
+            full_text = self._reconstruct_text(clean_data)
 
         avg_conf = float(clean_data["conf"].mean()) if not clean_data.empty else 0.0
 

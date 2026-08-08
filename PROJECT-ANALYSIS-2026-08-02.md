@@ -22,15 +22,14 @@
 > - **#11 — fixed**: the estimator is replaced by a projection-profile search that
 >   works on photographs. **Deskew became the default on 2026-08-07**, once a
 >   15-image corpus replaced the two samples that had disagreed about it.
-> - **#12 — open**, and the largest remaining quality item: Tesseract's layout
->   analysis shreds full-width text into column blocks. Mostly skew-induced, so
->   enabling deskew resolved all but one case.
+> - **#12 — fixed** (2026-08-07): geometric reading-order reconstruction in
+>   `src/acentos_ocr/layout/`. Corpus CER 18.9% → 14.8%, no regressions.
 > - **#2, #6, #8 — open.**
 >
 > Quality is now measured across the whole transcribed corpus by
-> `scripts/evaluate_corpus.py`, not on single images. Baseline: **18.9% CER** at the
-> current defaults, against 24.0% before deskew and roughly 30% for the original
-> binarising stack.
+> `scripts/evaluate_corpus.py`, not on single images. Baseline: **14.8% CER** at the
+> current defaults, against 18.9% before reading-order reconstruction, 24.0% before
+> deskew, and roughly 30% for the original binarising stack.
 
 > ### Correction to finding #3 (2026-08-02)
 >
@@ -357,7 +356,7 @@ The two committed sample images (`fluoxetine.png`, `document.png`) are flat scan
 where the estimator finds no angle, so their baselines are unchanged at 83.69% and
 95.17% — the flip is a no-op on clean scans and only acts on handheld photographs.
 
-### 12. Tesseract's layout analysis shreds full-width text into column blocks
+### 12. Tesseract's layout analysis shreds full-width text into column blocks — FIXED
 
 Found 2026-08-07 while investigating `IMG_1595`'s 41% CER, which looked at first like
 lines being truncated mid-word:
@@ -385,9 +384,44 @@ CER / 5.4% word miss to **4.8%**. So most of the shredding is *skew-induced*: a 
 page makes the layout analyser hallucinate column boundaries. Only `IMG_1595` is
 genuinely mis-segmented, and deskew makes it worse.
 
-Remaining options for that residual case: run psm 4 on a detected column region, split
-the page into column regions before OCR, or reorder Tesseract's blocks using the
-bounding boxes already present in the dataframe.
+**→ FIXED 2026-08-07.** `src/acentos_ocr/layout/` re-segments the page geometrically
+and re-emits the words in reading order. Corpus CER **18.9% → 14.8%**, at no extra
+OCR cost, because every word already comes back with a bounding box.
+
+Investigating it turned up a second failure mode, the mirror of the first. The two
+depend on skew:
+
+| | Tesseract's block widths | What it does wrong |
+| --- | --- | --- |
+| skewed page | narrow (x 340–1500 of 3016) | applies the column split to the **whole page** |
+| straight page | full (x 343–2569) | reads the **two-column body as full width** |
+
+So enabling deskew did not remove the problem, it inverted it — which is why
+`IMG_1595` got *worse* with deskew (40.5% → 48.0%) while every other affected image
+got better.
+
+Three design points, each of which was load-bearing:
+
+1. **Segment the word boxes, not the pixels.** A morphological-gradient mask of a
+   photograph also picks up the page border, the shadow gradient, and the sliver of
+   the adjacent article at the edge of the frame. The word boxes are clean by
+   construction and free.
+2. **Cut one gap at a time, widest first.** The first implementation split at every
+   qualifying gap simultaneously and produced 45 regions on `IMG_1595`: the page
+   broke into horizontal bands *before* anything noticed the gutter, and each band
+   then split into left and right on its own. The output interleaved the columns a
+   few lines at a time — the same bug, at finer granularity. Cutting only the widest
+   gap lets the two-column body survive as one region long enough to be split down
+   the gutter as a whole. 36 regions, CER 48.0% → 4.6%.
+3. **Decline on single-column pages.** Reordering trades Tesseract's block structure
+   for raw geometry, and with no columns to repair that is a pure loss — grouping
+   words into lines by vertical position alone merges a heading with body text at the
+   same height. Without the guard, `IMG_1594` went 7.3% → 18.8% and six images
+   regressed. With it, 13 of 15 are untouched and none regresses.
+
+Residual: `IMG_1596` (17.9% CER / 4.8% word miss), `IMG_1597` (15.4% / 4.8%) and
+`IMG_1646` (23.2% / 9.8%) still show an ordering gap the guard declines to act on —
+their layouts produce no side-by-side regions. Not yet diagnosed.
 
 ---
 
@@ -422,7 +456,10 @@ Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
 
 **Next:**
 
-1. **Reading order for `IMG_1595` (#12)** — the one genuinely mis-segmented sample.
+1. **The residual ordering cases** — `IMG_1596`, `IMG_1597` and `IMG_1646` still
+   show a 10–13 point gap between CER and word miss rate, but produce no
+   side-by-side regions, so the reading-order guard declines them. Different
+   mechanism from #12; undiagnosed.
 2. **The floor cases** — `IMG_1599` (~34% CER in all six configurations) and
    `IMG_1604` (~30%) do not move for any setting, and their word miss rates are high
    too, so these are real recognition failures. Look at the photographs.

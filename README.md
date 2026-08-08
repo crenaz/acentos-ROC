@@ -131,6 +131,7 @@ Flags:
 - `--psm`: Tesseract Page Segmentation Mode (6 works well for blocks of text).
 - `--lang`: Tesseract language code. Defaults to `spa+eng`.
 - `--deskew` / `--no-deskew`: correct page skew before OCR. **On by default** — see below.
+- `--reading-order` / `--no-reading-order`: rebuild reading order from word geometry on multi-column pages. **On by default** — see below.
 - `--oem`: OCR Engine Mode — `1` (LSTM) or `3` (default). Legacy modes are gone in Tesseract 5.
 - `--tessdata-dir`: override the language-model directory (defaults to project-local `tessdata/`).
 - `--tesseract-cmd`: override path to Tesseract binary if needed (default is usually `/usr/bin/tesseract`).
@@ -210,11 +211,12 @@ Baseline across 15 transcribed Cayman job listings, `--lang eng`, 2026-08-07
 
 | Configuration | CER | word miss | confidence |
 | --- | --- | --- | --- |
-| **psm 3 + deskew** *(current default)* | **18.9%** | 10.7% | 88.1% |
+| **psm 3 + deskew + reading order** *(current default)* | **14.8%** | 10.7% | 88.1% |
+| psm 3 + deskew | 18.9% | 10.7% | 88.1% |
 | psm 6 | 22.3% | 12.1% | 84.4% |
 | psm 6 + deskew | 22.3% | 11.9% | 84.3% |
 | psm 4 + deskew | 23.6% | 11.2% | 87.4% |
-| psm 3 *(previous default)* | 24.0% | 11.6% | 87.1% |
+| psm 3 *(default before 2026-08-07)* | 24.0% | 11.6% | 87.1% |
 | psm 4 | 27.6% | 12.9% | 86.3% |
 
 No single mode wins everywhere. Choosing the best configuration per image would
@@ -250,6 +252,45 @@ invent column boundaries and shred the page into out-of-order blocks — 45.7% C
 against a 5.4% word miss rate. Straightening the page fixed the segmentation. Skew
 damage and reading-order damage are frequently the same bug.
 
+#### Reading order (`--reading-order`)
+
+**On by default.** Corpus CER 18.9% → 14.8%, at no extra OCR cost.
+
+Tesseract's page segmentation mishandles the layout these adverts almost always
+use — a full-width headline and intro, a two-column body, then a full-width
+footer — and it fails in *both* directions depending on skew:
+
+| | Block widths | Failure |
+| --- | --- | --- |
+| skewed page | narrow | applies the column split to the **whole page**, shredding full-width paragraphs into three pieces emitted far apart |
+| straight page | full | reads the **two-column body as full width**, interleaving left and right line by line |
+
+Either way the characters are read correctly and put in the wrong order, which
+CER punishes exactly as hard as not reading them at all. On `IMG_1595`: 40.5% CER
+against a 7.9% word miss rate.
+
+The fix re-segments the page geometrically and re-emits the words. Every word
+already comes back from the OCR pass with a bounding box, so this needs no second
+pass. The segmentation is an XY-cut over a map of those boxes — not over pixels,
+which sidesteps the page border, uneven lighting and newsprint texture that make
+pixel-based layout analysis fragile on a photograph.
+
+Two details carry most of the benefit:
+
+- **Cut one gap at a time, widest first.** Splitting at every qualifying gap at
+  once breaks the page into horizontal bands *before* anything notices the gutter,
+  and then splits each band into left and right independently — which interleaves
+  the columns a few lines at a time, reproducing the bug being fixed.
+- **Do nothing on single-column pages.** Reordering discards Tesseract's block
+  structure in favour of raw geometry. Where there are no columns that is a
+  straight loss: grouping words into lines by vertical position alone merges a
+  heading with body text at the same height. Measured on `IMG_1594`, reordering
+  anyway costs 7.3% → 18.8%. With the guard, 13 of 15 images are untouched and
+  none regresses.
+
+Result on the corpus: `IMG_1595` 48.0% → **4.6%**, `IMG_1648` 4.8% → 4.3%, and
+every other image byte-identical.
+
 > **The confidence figures are Tesseract's self-assessment, not accuracy.** A model
 > can be confidently wrong. Treat the confidence table as a regression check — "did
 > this change break something?" — and use `scripts/evaluate_cer.py` against a manual
@@ -263,8 +304,10 @@ All code lives in a single importable package, `acentos_ocr`, under a `src/` lay
 
 ```
 src/acentos_ocr/
-├── core/      pipeline orchestration (PreprocessingPipeline)
+├── core/      pipeline orchestration (PreprocessingPipeline, build_default_pipeline)
+├── eval/      corpus discovery and accuracy metrics
 ├── filters/   individual preprocessing steps (BaseFilter subclasses)
+├── layout/    geometric page segmentation and reading-order reconstruction
 ├── ocr/       Tesseract wrapper + OCRResult
 └── utils/     image loading/saving
 ```
