@@ -23,11 +23,11 @@
 >   works on photographs. **Deskew became the default on 2026-08-07**, once a
 >   15-image corpus replaced the two samples that had disagreed about it.
 > - **#12 — fixed** (2026-08-07): geometric reading-order reconstruction in
->   `src/acentos_ocr/layout/`. Corpus CER 18.9% → 14.8%, no regressions.
+>   `src/acentos_ocr/layout/`. Corpus CER 18.9% → 12.0%.
 > - **#2, #6, #8 — open.**
 >
 > Quality is now measured across the whole transcribed corpus by
-> `scripts/evaluate_corpus.py`, not on single images. Baseline: **14.8% CER** at the
+> `scripts/evaluate_corpus.py`, not on single images. Baseline: **12.0% CER** at the
 > current defaults, against 18.9% before reading-order reconstruction, 24.0% before
 > deskew, and roughly 30% for the original binarising stack.
 
@@ -419,9 +419,39 @@ Three design points, each of which was load-bearing:
    same height. Without the guard, `IMG_1594` went 7.3% → 18.8% and six images
    regressed. With it, 13 of 15 are untouched and none regresses.
 
-Residual: `IMG_1596` (17.9% CER / 4.8% word miss), `IMG_1597` (15.4% / 4.8%) and
-`IMG_1646` (23.2% / 9.8%) still show an ordering gap the guard declines to act on —
-their layouts produce no side-by-side regions. Not yet diagnosed.
+**→ Residual cases resolved 2026-08-07.** `IMG_1596`, `IMG_1597` and `IMG_1646` were
+initially left behind because the first implementation gated on "does this page have
+columns", and none of them does. That gate was answering the wrong question.
+
+`IMG_1646` is a centred, single-column advert, and Tesseract had shredded it anyway:
+
+    ...in a fast-   |  duties include dishwashing, food preparation, kitche
+    paced restaurant.  |  n cleaning,  |  fits required under  |  closing date: 6 au
+
+So the fix had to work with no column structure at all. Three changes:
+
+1. **Assign words to regions, group lines within them.** The two failure modes are
+   mirror images — a line split across blocks must be rejoined, a line merged across
+   the gutter must be torn apart — and each needs a different granularity.
+2. **Rejoin fragments that overlap vertically and sit side by side.** That is what a
+   shredded line looks like once the region is known.
+3. **Stop re-deriving lines from word positions.** This was the real cause of the
+   `IMG_1594` regression, and it was misattributed at first to "reordering
+   single-column pages is inherently unsafe". It is not. Tesseract tracks a baseline
+   per line and stays correct on a photographed page whose lines sag; clustering
+   words by vertical centre drops the trailing words of a sloping line onto the line
+   below. Preserving Tesseract's line grouping makes single-column reordering safe,
+   so the `has_columns` guard was removed as unnecessary.
+
+Corpus CER **14.8% → 12.0%**. Nine images improve — `IMG_1646` 23.2% → 7.3%,
+`IMG_1596` 17.9% → 6.0%, `IMG_1597` 15.4% → 12.5%, `IMG_1604` 34.5% → 30.3%,
+`IMG_1599` 34.2% → 32.2% — and the harness now reports no sample dominated by
+ordering damage.
+
+One regression accepted: `IMG_1658` 4.7% → 9.3%. Its final short line becomes a
+region of its own and moves ahead of the line above it. Worth 4.6 points on one
+image against 2.8 points across the corpus, and fixing it would mean another
+threshold tuned on a single sample.
 
 ---
 
@@ -456,16 +486,15 @@ Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
 
 **Next:**
 
-1. **The residual ordering cases** — `IMG_1596`, `IMG_1597` and `IMG_1646` still
-   show a 10–13 point gap between CER and word miss rate, but produce no
-   side-by-side regions, so the reading-order guard declines them. Different
-   mechanism from #12; undiagnosed.
-2. **The floor cases** — `IMG_1599` (~34% CER in all six configurations) and
-   `IMG_1604` (~30%) do not move for any setting, and their word miss rates are high
-   too, so these are real recognition failures. Look at the photographs.
-3. **Composable pipelines via CLI (#2)** — now more valuable, because the harness
-   gives it something to measure against. Per-image oracle CER is 15.8% against
-   18.9% for the best fixed configuration, so roughly 3 points sit in per-image
-   adaptation.
-4. **Remaining cleanup** — #8 (licensing), #9 (`.cursorrules`), and per-filter tests
+1. **The floor cases** — `IMG_1599` (32.2% CER, 28.8% word miss) and `IMG_1604`
+   (30.3% / 27.0%) barely move for any setting, and their word miss rates track
+   their CER, so these are genuine recognition failures rather than layout or
+   tuning problems. Now the two worst images in the corpus by a wide margin. Look
+   at the photographs.
+2. **Composable pipelines via CLI (#2)** — the last structural finding, and the
+   harness now gives it something to measure against. Note the headroom figure
+   needs recomputing: the 15.8% per-image oracle was measured before deskew and
+   reading order became defaults, against a fixed baseline that has since improved
+   from 18.9% to 12.0%.
+3. **Remaining cleanup** — #8 (licensing), #9 (`.cursorrules`), and per-filter tests
    beyond deskew and the metrics (#6).

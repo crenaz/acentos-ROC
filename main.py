@@ -45,7 +45,7 @@ def main() -> None:
         default=True,
         help=(
             "Rebuild reading order from word geometry when the page has columns. "
-            "On by default, worth 18.9%% -> 14.8%% character error rate across the "
+            "On by default, worth 18.9%% -> 12.0%% character error rate across the "
             "corpus. Costs no extra OCR, and single-column pages are left alone."
         ),
     )

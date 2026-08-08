@@ -211,7 +211,7 @@ Baseline across 15 transcribed Cayman job listings, `--lang eng`, 2026-08-07
 
 | Configuration | CER | word miss | confidence |
 | --- | --- | --- | --- |
-| **psm 3 + deskew + reading order** *(current default)* | **14.8%** | 10.7% | 88.1% |
+| **psm 3 + deskew + reading order** *(current default)* | **12.0%** | 10.7% | 88.1% |
 | psm 3 + deskew | 18.9% | 10.7% | 88.1% |
 | psm 6 | 22.3% | 12.1% | 84.4% |
 | psm 6 + deskew | 22.3% | 11.9% | 84.3% |
@@ -254,7 +254,7 @@ damage and reading-order damage are frequently the same bug.
 
 #### Reading order (`--reading-order`)
 
-**On by default.** Corpus CER 18.9% → 14.8%, at no extra OCR cost.
+**On by default.** Corpus CER 18.9% → 12.0%, at no extra OCR cost.
 
 Tesseract's page segmentation mishandles the layout these adverts almost always
 use — a full-width headline and intro, a two-column body, then a full-width
@@ -275,21 +275,27 @@ pass. The segmentation is an XY-cut over a map of those boxes — not over pixel
 which sidesteps the page border, uneven lighting and newsprint texture that make
 pixel-based layout analysis fragile on a photograph.
 
-Two details carry most of the benefit:
+Three details carry the benefit:
 
 - **Cut one gap at a time, widest first.** Splitting at every qualifying gap at
   once breaks the page into horizontal bands *before* anything notices the gutter,
   and then splits each band into left and right independently — which interleaves
   the columns a few lines at a time, reproducing the bug being fixed.
-- **Do nothing on single-column pages.** Reordering discards Tesseract's block
-  structure in favour of raw geometry. Where there are no columns that is a
-  straight loss: grouping words into lines by vertical position alone merges a
-  heading with body text at the same height. Measured on `IMG_1594`, reordering
-  anyway costs 7.3% → 18.8%. With the guard, 13 of 15 images are untouched and
-  none regresses.
+- **Assign words to regions, but keep Tesseract's lines inside them.** The two
+  failure modes are mirror images and both need handling: a line Tesseract split
+  across blocks must be rejoined, and a line it merged across the gutter must be
+  torn apart. Per-word assignment does the tearing; grouping by Tesseract's own
+  line number inside each region does the rejoining.
+- **Never re-derive lines from word positions.** Tesseract tracks a baseline per
+  line, so it stays correct on a photographed page whose lines sag across the
+  frame. Clustering words by vertical centre does not — it drops the last words of
+  a sloping line onto the line below. An earlier version did exactly that and cost
+  `IMG_1594` 7.3% → 18.8%.
 
-Result on the corpus: `IMG_1595` 48.0% → **4.6%**, `IMG_1648` 4.8% → 4.3%, and
-every other image byte-identical.
+Corpus result: nine images improve, most dramatically `IMG_1595` 48.0% → **4.7%**,
+`IMG_1646` 23.2% → **7.3%** and `IMG_1596` 17.9% → **6.0%**. Four are untouched.
+One regresses: `IMG_1658` 4.7% → 9.3%, where a short trailing line becomes its own
+region and moves ahead of the line above it.
 
 > **The confidence figures are Tesseract's self-assessment, not accuracy.** A model
 > can be confidently wrong. Treat the confidence table as a regression check — "did

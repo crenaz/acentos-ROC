@@ -41,30 +41,6 @@ class Rect:
         return self.x0 <= x < self.x1 and self.y0 <= y < self.y1
 
 
-def has_columns(regions: list[Rect], min_overlap: float = 0.5) -> bool:
-    """
-    True when two regions sit side by side -- the signature of a column layout.
-
-    Worth testing before acting on a reordering. Rebuilding reading order means
-    discarding Tesseract's block structure in favour of raw geometry, and on a
-    single-column page that trade is a straight loss: Tesseract already had the
-    order right, and grouping words into lines by vertical position alone will
-    happily merge a heading with body text that happens to sit at the same height.
-    Measured on `IMG_1594`, doing it anyway costs 7.3% -> 18.8% CER.
-
-    `min_overlap` is the fraction of the shorter region's height that must overlap
-    vertically, so a footer brushing the bottom of a column does not count.
-    """
-    for index, first in enumerate(regions):
-        for second in regions[index + 1 :]:
-            overlap = min(first.y1, second.y1) - max(first.y0, second.y0)
-            shorter = min(first.height, second.height)
-            side_by_side = first.x1 <= second.x0 or second.x1 <= first.x0
-            if side_by_side and shorter > 0 and overlap > min_overlap * shorter:
-                return True
-    return False
-
-
 def _widest_interior_gap(occupied: np.ndarray, minimum: int) -> tuple[int, int] | None:
     """
     The widest run of unoccupied positions with content on both sides.

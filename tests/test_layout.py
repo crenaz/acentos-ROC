@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 
 from acentos_ocr.layout.reading_order import reorder
-from acentos_ocr.layout.regions import Rect, find_regions, has_columns
+from acentos_ocr.layout.regions import Rect, find_regions
 
 #: Occupancy grids below are expressed in cells, and `reading_order` rasterises at
 #: 8 cells per median word height, so a "word height" here is 8 cells.
@@ -93,23 +93,6 @@ def test_an_empty_page_yields_no_regions():
 
 
 # --------------------------------------------------------------------------
-# the single-column guard
-# --------------------------------------------------------------------------
-
-def test_has_columns_detects_side_by_side_regions():
-    assert has_columns([Rect(0, 0, 40, 100), Rect(60, 0, 100, 100)])
-
-
-def test_has_columns_rejects_stacked_regions():
-    assert not has_columns([Rect(0, 0, 100, 40), Rect(0, 60, 100, 100)])
-
-
-def test_has_columns_rejects_a_barely_touching_overlap():
-    """A footer brushing the bottom of a column is not a second column."""
-    assert not has_columns([Rect(0, 0, 40, 100), Rect(60, 95, 100, 200)])
-
-
-# --------------------------------------------------------------------------
 # reordering
 # --------------------------------------------------------------------------
 
@@ -122,7 +105,8 @@ LEFT = ["a bachelors degree in a related area", "five years of relevant experien
 RIGHT = ["manage the technical support network", "provide training to existing users"]
 
 
-def _line(text, x, y, jitter=0):
+def _line(text, x, y, block=1, line=1, jitter=0):
+    """One Tesseract line: words laid out left to right, sharing a line identity."""
     words, cursor = [], x
     for index, word in enumerate(text.split()):
         width = CHAR * len(word)
@@ -132,6 +116,9 @@ def _line(text, x, y, jitter=0):
             "top": y + (jitter if index % 2 else 0),
             "width": width,
             "height": HEIGHT,
+            "block_num": block,
+            "par_num": 1,
+            "line_num": line,
         })
         cursor += width + SPACE
     return words
@@ -139,7 +126,7 @@ def _line(text, x, y, jitter=0):
 
 def page(*lines, shuffle=False):
     """Build a Tesseract-shaped word dataframe from (text, x, y) line specs."""
-    rows = [w for text, x, y in lines for w in _line(text, x, y)]
+    rows = [w for i, (text, x, y) in enumerate(lines) for w in _line(text, x, y, block=i + 1)]
     frame = pd.DataFrame(rows)
     # Row order must not matter -- geometry is the only input that should count.
     return frame.sample(frac=1, random_state=0) if shuffle else frame
@@ -152,18 +139,48 @@ def two_column_page(**kwargs):
     return page(*lines, **kwargs)
 
 
-def test_reorder_declines_on_a_single_column_page():
+def test_reorder_leaves_a_single_column_page_alone():
     """
-    None tells the caller to keep Tesseract's ordering. With no columns to repair,
-    re-deriving order from geometry is a pure loss -- measured at 7.3% -> 18.8%
-    CER on IMG_1594.
+    With no columns to repair, the text must come back in the order Tesseract gave
+    it. Tesseract's own line grouping is preserved rather than re-derived from word
+    positions, which is what makes this safe -- re-deriving lines drops the last
+    words of a sloping line onto the line below, and cost 7.3% -> 18.8% CER on
+    IMG_1594.
     """
-    assert reorder(page(("alpha beta gamma", 0, 0), ("delta epsilon", 0, 60))) is None
+    text = reorder(page(("alpha beta gamma", 0, 0), ("delta epsilon", 0, 60)))
+    assert text.split() == ["alpha", "beta", "gamma", "delta", "epsilon"]
 
 
 def test_reorder_declines_on_an_empty_page():
-    empty = pd.DataFrame(columns=["text", "left", "top", "width", "height"])
-    assert reorder(empty) is None
+    columns = ["text", "left", "top", "width", "height",
+               "block_num", "par_num", "line_num"]
+    assert reorder(pd.DataFrame(columns=columns)) is None
+
+
+def test_reorder_rejoins_a_line_tesseract_split_into_strips():
+    """
+    The IMG_1646 failure: a single-column advert whose lines Tesseract cut into
+    vertical strips, emitting "in a fast-", "paced restaurant." and "duties
+    include" far apart. Pieces at the same height must be rejoined in x order.
+    """
+    first = _line("minimum experience in a fast-", 0, 0, block=1)
+    # The cut falls mid-word, so the second piece resumes at a normal word gap --
+    # a wide gap here would be a real gutter, which is a different case.
+    resume = max(w["left"] + w["width"] for w in first) + SPACE
+    rows = first + _line("paced restaurant.", resume, 0, block=2)
+    rows += _line("duties include dishwashing", 0, 60, block=3)
+
+    lines = [line for line in reorder(pd.DataFrame(rows)).splitlines() if line]
+    assert lines[0] == "minimum experience in a fast- paced restaurant."
+
+
+def test_reorder_does_not_rejoin_stacked_lines_of_a_paragraph():
+    """Fragments must overlap vertically AND be side by side to count as one line."""
+    rows = _line("first line of the paragraph", 0, 0, block=1)
+    rows += _line("second line of the paragraph", 0, 60, block=2)
+
+    lines = [line for line in reorder(pd.DataFrame(rows)).splitlines() if line]
+    assert lines == ["first line of the paragraph", "second line of the paragraph"]
 
 
 def test_reorder_keeps_a_full_width_line_whole():
@@ -172,6 +189,24 @@ def test_reorder_keeps_a_full_width_line_whole():
     emitted in three distant pieces. It must come back as one line.
     """
     assert reorder(two_column_page()).splitlines()[0] == HEADER
+
+
+def test_reorder_splits_a_line_tesseract_merged_across_the_gutter():
+    """
+    The mirror failure, seen on a straight page: Tesseract reads a two-column body
+    as full width and returns one line holding both columns. That line must be torn
+    apart at the gutter, not carried into a single region intact.
+    """
+    rows = []
+    for index, (left, right) in enumerate(zip(LEFT, RIGHT)):
+        y = 120 + 40 * index
+        # one Tesseract line spanning both columns, as it reports on a straight page
+        rows += _line(left, 0, y, block=1, line=index + 1)
+        rows += _line(right, 700, y, block=1, line=index + 1)
+    rows += _line(HEADER, 0, 0, block=2)
+
+    lines = [line for line in reorder(pd.DataFrame(rows)).splitlines() if line]
+    assert lines == [HEADER, *LEFT, *RIGHT]
 
 
 def test_reorder_reads_each_column_fully_before_the_next():
