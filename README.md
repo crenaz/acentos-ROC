@@ -206,8 +206,8 @@ Rates are micro-averaged (errors and lengths summed separately) so a two-line
 advert cannot outweigh a full page. `--json` writes the raw per-image rows for
 comparison against a later run.
 
-Baseline across 15 transcribed Cayman job listings, `--lang eng`, 2026-08-07
-(`results/baseline-2026-08-07.json`):
+Baseline across 15 transcribed Cayman job listings, `--lang eng`, 2026-08-08
+(`results/baseline-2026-08-08.json`):
 
 | Configuration | CER | word miss | confidence |
 | --- | --- | --- | --- |
@@ -216,7 +216,7 @@ Baseline across 15 transcribed Cayman job listings, `--lang eng`, 2026-08-07
 | psm 6 | 22.3% | 12.1% | 84.4% |
 | psm 6 + deskew | 22.3% | 11.9% | 84.3% |
 | psm 4 + deskew | 23.6% | 11.2% | 87.4% |
-| psm 3 *(default before 2026-08-07)* | 24.0% | 11.6% | 87.1% |
+| psm 3 *(default before 2026-08-08)* | 24.0% | 11.6% | 87.1% |
 | psm 4 | 27.6% | 12.9% | 86.3% |
 
 No single mode wins everywhere. Choosing the best configuration per image would
@@ -248,7 +248,7 @@ effect, and it is a good illustration of why single-image results are not eviden
 
 #### Deskew (`--deskew`)
 
-**On by default** as of 2026-08-07 — worth 5.1 points corpus-wide (24.0% → 18.9% CER
+**On by default** as of 2026-08-08 — worth 5.1 points corpus-wide (24.0% → 18.9% CER
 at psm 3) for negligible extra time. Pass `--no-deskew` to disable. Per-image delta:
 
 | Image | CER change with `--deskew` |

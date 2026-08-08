@@ -8,7 +8,7 @@
 > state at `f5c0083`. Findings #10–#13 were added later while working on the others —
 > each is dated and marked.
 >
-> Current status as of 2026-08-07:
+> Current status as of 2026-08-08:
 > - **#1 — fixed** (commit `4607546`).
 > - **#3 — fixed**, but its stated diagnosis was **wrong**. See the correction below.
 > - **#4 — fixed** (commit `82dc59b`): every pipeline stage is written to disk
@@ -22,19 +22,30 @@
 > - **#10 — fixed**: the sign inversion is corrected and covered by tests. Fixing it
 >   exposed **#11**.
 > - **#11 — fixed**: the estimator is replaced by a projection-profile search that
->   works on photographs. **Deskew became the default on 2026-08-07**, once a
+>   works on photographs. **Deskew became the default on 2026-08-08**, once a
 >   15-image corpus replaced the two samples that had disagreed about it.
-> - **#12 — fixed** (2026-08-07): geometric reading-order reconstruction in
+> - **#12 — fixed** (2026-08-08): geometric reading-order reconstruction in
 >   `src/acentos_ocr/layout/`. Corpus CER 18.9% → 12.0%.
-> - **#13 — investigated, closed as capture-limited** (2026-08-07): the two worst
+> - **#13 — investigated, closed as capture-limited** (2026-08-08): the two worst
 >   images fail on perspective and small text, and neither upscaling nor confidence
 >   filtering helps corpus-wide.
 > - **#2, #8 — open.**
 >
 > Quality is now measured across the whole transcribed corpus by
-> `scripts/evaluate_corpus.py`, not on single images. Baseline: **12.0% CER** at the
-> current defaults, against 18.9% before reading-order reconstruction, 24.0% before
-> deskew, and roughly 30% for the original binarising stack.
+> `scripts/evaluate_corpus.py`, not on single images, against 15 manual
+> transcriptions.
+>
+> | Change | Corpus CER |
+> | --- | --- |
+> | original binarising stack | ~30% |
+> | drop binarisation, `--psm 3` (#3) | 24.0% |
+> | deskew on by default (#11) | 18.9% |
+> | reading-order reconstruction (#12) | 14.8% |
+> | residual ordering cases (#12) | **12.0%** |
+>
+> Nothing in the two remaining open findings is expected to move that number: #2 is
+> a composability change and #8 is metadata. The next real accuracy gain would have
+> to come from dewarping (#13) or from better captures.
 
 > ### Correction to finding #3 (2026-08-02)
 >
@@ -72,7 +83,7 @@ Two gaps none of the original nine findings covered:
   **Still open** — a representative Cayman image should be committed as a third
   sample. Less pressing now that the corpus harness exists, but the two committed
   samples are still the only thing a fresh clone can measure against.
-- ~~**There is no ground truth.**~~ **Closed 2026-08-07.** 15 manual
+- ~~**There is no ground truth.**~~ **Closed 2026-08-08.** 15 manual
   transcriptions now cover the corpus (16 photos; `IMG_1600` is the gap), consumed
   by `scripts/evaluate_corpus.py`. Every quality claim in this document and the
   README is now anchored to character error rate rather than to Tesseract's
@@ -349,7 +360,7 @@ It rescues a genuinely skewed page decisively, but regresses `IMG_1595` at rest,
 enabling it by default is not justified on two samples. Revisit once more ground
 truth exists.
 
-**→ REVISITED 2026-08-07, and the conclusion reverses.** With 15 transcriptions
+**→ REVISITED 2026-08-08, and the conclusion reverses.** With 15 transcriptions
 instead of 2, deskew is worth 5.1 points corpus-wide at psm 3 (24.0% → 18.9% CER) at
 negligible time cost. The earlier hesitation was undersampling: `IMG_1595` is one of
 only two images it hurts.
@@ -368,14 +379,14 @@ only two images it hurts.
 The `min_peak_ratio` guard is doing its job: on 8 of 15 images the filter declines to
 act at all, which is why four large wins cost only two modest regressions.
 
-**→ Default flipped 2026-08-07.** `--deskew` is now on; `--no-deskew` disables it.
+**→ Default flipped 2026-08-08.** `--deskew` is now on; `--no-deskew` disables it.
 The two committed sample images (`fluoxetine.png`, `document.png`) are flat scans
 where the estimator finds no angle, so their baselines are unchanged at 83.69% and
 95.17% — the flip is a no-op on clean scans and only acts on handheld photographs.
 
 ### 12. Tesseract's layout analysis shreds full-width text into column blocks — FIXED
 
-Found 2026-08-07 while investigating `IMG_1595`'s 41% CER, which looked at first like
+Found 2026-08-08 while investigating `IMG_1595`'s 41% CER, which looked at first like
 lines being truncated mid-word:
 
 ```
@@ -401,7 +412,7 @@ CER / 5.4% word miss to **4.8%**. So most of the shredding is *skew-induced*: a 
 page makes the layout analyser hallucinate column boundaries. Only `IMG_1595` is
 genuinely mis-segmented, and deskew makes it worse.
 
-**→ FIXED 2026-08-07.** `src/acentos_ocr/layout/` re-segments the page geometrically
+**→ FIXED 2026-08-08.** `src/acentos_ocr/layout/` re-segments the page geometrically
 and re-emits the words in reading order. Corpus CER **18.9% → 14.8%**, at no extra
 OCR cost, because every word already comes back with a bounding box.
 
@@ -436,7 +447,7 @@ Three design points, each of which was load-bearing:
    same height. Without the guard, `IMG_1594` went 7.3% → 18.8% and six images
    regressed. With it, 13 of 15 are untouched and none regresses.
 
-**→ Residual cases resolved 2026-08-07.** `IMG_1596`, `IMG_1597` and `IMG_1646` were
+**→ Residual cases resolved 2026-08-08.** `IMG_1596`, `IMG_1597` and `IMG_1646` were
 initially left behind because the first implementation gated on "does this page have
 columns", and none of them does. That gate was answering the wrong question.
 
@@ -488,16 +499,16 @@ Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
    to 0.00°. Fixing it exposed **#11**, below.
 6. ~~A skew estimator that works on photographs (#11)~~ — done 2026-08-02.
    Projection-profile search, exact on both real photos and synthetic scans.
-7. ~~More ground truth~~ — done 2026-08-07. 15 transcriptions now exist against 16
+7. ~~More ground truth~~ — done 2026-08-08. 15 transcriptions now exist against 16
    photos (`IMG_1600` is the gap). This settled the deskew question; see #11.
 8. ~~Single Tesseract pass (#5)~~ — done 2026-08-07, ~45% faster.
 9. ~~Corpus evaluation harness~~ — done 2026-08-07. `scripts/evaluate_corpus.py`,
    `src/acentos_ocr/eval/`. Sweeps psm × deskew across every transcribed image and
    reports CER beside an order-insensitive word miss rate. Baseline in
-   `results/baseline-2026-08-07.json`.
+   `results/baseline-2026-08-08.json`.
 10. ~~Empty committed files (#7)~~ — done 2026-08-07.
 
-11. ~~Flip the `--deskew` default~~ — done 2026-08-07. Also fixed `main.py --help`,
+11. ~~Flip the `--deskew` default~~ — done 2026-08-08. Also fixed `main.py --help`,
     which had always crashed: an unescaped `%` in the `--psm` help text parsed as a
     `%c` conversion when argparse formatted it.
 
