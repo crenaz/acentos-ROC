@@ -15,6 +15,8 @@
 >   under `--debug`.
 > - **#5 — fixed** (2026-08-07): one Tesseract pass per image instead of two, ~45%
 >   faster.
+> - **#6 — partially fixed**: 74 tests exist, but only `DeskewFilter` among the
+>   nine filters has direct coverage.
 > - **#7 — fixed** (2026-08-07): the three empty scaffolded modules are deleted.
 > - **#9 — fixed**: `.cursorrules` names the `acentos_ocr` paths.
 > - **#10 — fixed**: the sign inversion is corrected and covered by tests. Fixing it
@@ -24,7 +26,7 @@
 >   15-image corpus replaced the two samples that had disagreed about it.
 > - **#12 — fixed** (2026-08-07): geometric reading-order reconstruction in
 >   `src/acentos_ocr/layout/`. Corpus CER 18.9% → 12.0%.
-> - **#2, #6, #8 — open.**
+> - **#2, #8 — open.**
 >
 > Quality is now measured across the whole transcribed corpus by
 > `scripts/evaluate_corpus.py`, not on single images. Baseline: **12.0% CER** at the
@@ -55,27 +57,30 @@ Near-term work targets the **`Raw-Photos-Of-Cayman-Job-Listings`** corpus —
 handheld phone photos of newspaper job listings, **all in English**. Spanish and
 diacritic handling are deprioritised until this changes.
 
-This re-orders the work below. Finding #3's remaining half was framed around
-preserving accent marks; for English newsprint photos the same filter stack is
-still wrong, but for different reasons — perspective, uneven lighting, and
-newsprint texture rather than eroded diacritics. It also promotes **#10**: a
-handheld photo of a clipping is skewed by definition, deskew is the obvious
-filter to reach for, and it currently doubles the skew instead of removing it.
+That focus drove the re-ordering of the work below, and in particular promoted
+**#10** and **#11**: a handheld photo of a clipping is skewed by definition, so
+deskew is the obvious filter to reach for, and it was both inverted and unusable
+on photographs.
 
-Two gaps none of the ten findings covers:
+Two gaps none of the original nine findings covered:
 
 - **The sample images are unrepresentative.** `fluoxetine.png` is a pill label and
-  `document.png` is a Spanish book page. Neither is a newspaper clipping photo. A
-  representative Cayman image should be committed as a third sample.
-- **There is no ground truth.** Every measurement so far is Tesseract's
-  self-reported confidence, which is not accuracy — see the note in the README
-  baselines section. Filter tuning needs ground-truth transcriptions and a
-  character error rate to be meaningful.
+  `document.png` is a Spanish book page. Neither is a newspaper clipping photo.
+  **Still open** — a representative Cayman image should be committed as a third
+  sample. Less pressing now that the corpus harness exists, but the two committed
+  samples are still the only thing a fresh clone can measure against.
+- ~~**There is no ground truth.**~~ **Closed 2026-08-07.** 15 manual
+  transcriptions now cover the corpus (16 photos; `IMG_1600` is the gap), consumed
+  by `scripts/evaluate_corpus.py`. Every quality claim in this document and the
+  README is now anchored to character error rate rather than to Tesseract's
+  self-reported confidence.
 
 For English-only work the system models are both faster and more accurate than
 `tessdata_best` (84.44% vs 82.74% on `fluoxetine.png`, at half the wall clock),
 so `--tessdata-dir /usr/share/tesseract-ocr/5/tessdata` is the better setting for
-this corpus even though the project default remains `tessdata_best`.
+this corpus even though the project default remains `tessdata_best`. Worth
+re-testing against the corpus rather than the two samples — that comparison
+predates the harness.
 
 ---
 
@@ -170,11 +175,17 @@ byte-identical on `IMG_1595` (41.0% at psm 3, 53.7% at psm 4); wall clock for th
 two-PSM run fell from 34.5s to 19.0s. Confidence moved by <0.15 points because the
 filter now also drops whitespace-only tokens that were previously averaged in.
 
-### 6. Zero tests
+### 6. Zero tests — PARTIALLY FIXED
 
 `tests/` is an empty directory, `pytest` is declared in
 `[project.optional-dependencies].dev`, and the blueprint specifically called for
 per-filter validation. Every filter is unverified.
+
+**→ PARTIALLY FIXED.** 74 tests across `test_deskew`, `test_layout`, `test_metrics`,
+`test_corpus` and `test_pipelines`. The gap the finding actually named is still
+open: of nine filters, only `DeskewFilter` has direct tests. `CLAHEFilter`,
+`GaussianBlurFilter`, `GrayscaleFilter`, `MorphologyFilter`, `ResizeFilter` and
+`AdaptiveThresholdFilter` are exercised only incidentally, or not at all.
 
 ### 7. Three empty files are committed — FIXED
 
@@ -193,10 +204,13 @@ AGPL-3.0 alongside a commercial agreement is a legitimate open-core dual-license
 `pyproject.toml` has no `license` field (package metadata reads blank) and the README
 never mentions licensing at all.
 
-### 9. Minor: `.cursorrules` path inconsistency
+### 9. Minor: `.cursorrules` path inconsistency — FIXED
 
 `.cursorrules` line 5 tells the AI filters inherit from `filters.base.BaseFilter` while
 the code uses `src.filters.base` — a small inconsistency that feeds finding #1.
+
+**→ FIXED** as a consequence of #1. `.cursorrules` now names the `acentos_ocr` paths
+and explicitly forbids the `src.*` import prefix.
 
 ### 10. `DeskewFilter` rotates the wrong way and doubles the skew — FIXED
 
@@ -496,5 +510,12 @@ Re-ordered 2026-08-02 for the English Cayman-listings focus described above.
    needs recomputing: the 15.8% per-image oracle was measured before deskew and
    reading order became defaults, against a fixed baseline that has since improved
    from 18.9% to 12.0%.
-3. **Remaining cleanup** — #8 (licensing), #9 (`.cursorrules`), and per-filter tests
-   beyond deskew and the metrics (#6).
+3. **Per-filter tests (#6)** — 74 tests exist, but of the nine filters only
+   `DeskewFilter` is directly covered. `CLAHEFilter`, `ResizeFilter`,
+   `MorphologyFilter` and `AdaptiveThresholdFilter` are the ones no measurement
+   currently protects.
+4. **Licensing metadata (#8)** — `pyproject.toml` still has no `license` field and
+   the README says nothing about licensing.
+5. **Corpus housekeeping** — `IMG_1600.JPEG` has no transcription, and the two
+   committed sample images are still a pill label and a Spanish book page rather
+   than anything resembling the target corpus.
