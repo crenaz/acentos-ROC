@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 crenaz
+
 import numpy as np
 import pytest
 from acentos_ocr.eval.corpus import Sample, discover

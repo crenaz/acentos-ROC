@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 crenaz
+
 """Behavioural tests for the individual filters.
 
 Every filter became reachable by name when `--pipeline` landed (finding #2), so a

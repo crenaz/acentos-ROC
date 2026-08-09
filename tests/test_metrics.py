@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 crenaz
+
 import pytest
 
 from acentos_ocr.eval.metrics import cer, levenshtein, normalise, word_miss_rate

@@ -420,10 +420,11 @@ Never use `src.` as an import prefix.
 
 ### 7. Licence
 
-**AGPL-3.0-only.** The full text is in [`LICENSE`](LICENSE), and `pyproject.toml`
-declares it as an SPDX expression, so the built wheel carries
-`License-Expression: AGPL-3.0-only` and bundles the text at
-`dist-info/licenses/LICENSE`.
+Copyright (c) 2026 crenaz. Licensed under **AGPL-3.0-only**.
+
+The full text is in [`LICENSE`](LICENSE), `pyproject.toml` declares it as an SPDX
+expression — so the built wheel carries `License-Expression: AGPL-3.0-only` and
+bundles the text — and every source file opens with an SPDX header.
 
 The AGPL is the GPL plus one extra obligation, [section
 13](LICENSE): if you run a modified version and let other people use it **over a
@@ -442,7 +443,9 @@ In practice:
 A commercial licence is available on request for anyone who needs to build on this
 without those obligations.
 
-Contributions are accepted under the same licence.
+Contributions are accepted under AGPL-3.0 **plus** a grant allowing the copyright
+holder to relicense them, which is what keeps that commercial option open. See
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 > Dependencies keep their own terms and none of them is AGPL: OpenCV is Apache-2.0,
 > NumPy, pandas and Pillow are BSD-style, pytesseract is Apache-2.0. Tesseract

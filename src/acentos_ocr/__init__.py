@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 crenaz
+
 """
 Acentos OCR: a pipe-and-filter OCR pipeline built on OpenCV and Tesseract,
 aimed at accurate recognition of accented characters.

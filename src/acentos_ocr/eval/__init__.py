@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (c) 2026 crenaz
+
 from .corpus import CORPUS_ENV_VAR, Sample, default_root, discover
 from .metrics import cer, levenshtein, normalise, word_miss_rate
 
