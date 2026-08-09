@@ -10,7 +10,7 @@
     "missed": 9,
     "truth_words": 113,
     "confidence": 91.2899130483871,
-    "seconds": 2.815917872000682
+    "seconds": 2.4527294449999317
   },
   {
     "stem": "IMG_1594",
@@ -23,7 +23,7 @@
     "missed": 9,
     "truth_words": 113,
     "confidence": 91.2899130483871,
-    "seconds": 2.815917872000682
+    "seconds": 2.4527294449999317
   },
   {
     "stem": "IMG_1598",
@@ -36,7 +36,7 @@
     "missed": 20,
     "truth_words": 115,
     "confidence": 83.91340125619836,
-    "seconds": 17.74550068299959
+    "seconds": 14.692027725999651
   },
   {
     "stem": "IMG_1598",
@@ -49,7 +49,7 @@
     "missed": 20,
     "truth_words": 115,
     "confidence": 83.91340125619836,
-    "seconds": 17.74550068299959
+    "seconds": 14.692027725999651
   },
   {
     "stem": "IMG_1597",
@@ -62,7 +62,7 @@
     "missed": 23,
     "truth_words": 475,
     "confidence": 91.83882874233129,
-    "seconds": 11.975637696999911
+    "seconds": 7.1713788949991795
   },
   {
     "stem": "IMG_1597",
@@ -75,7 +75,7 @@
     "missed": 23,
     "truth_words": 475,
     "confidence": 91.83882874233129,
-    "seconds": 11.975637696999911
+    "seconds": 7.1713788949991795
   },
   {
     "stem": "IMG_1599",
@@ -83,12 +83,12 @@
     "pipeline": "grayscale deskew blur:ksize=3",
     "reading_order": false,
     "scale": 1.0,
-    "distance": 427,
-    "truth_chars": 1254,
+    "distance": 425,
+    "truth_chars": 1252,
     "missed": 51,
     "truth_words": 184,
     "confidence": 80.08579219886364,
-    "seconds": 14.627583016999779
+    "seconds": 12.099689556000158
   },
   {
     "stem": "IMG_1599",
@@ -96,12 +96,12 @@
     "pipeline": "grayscale deskew blur:ksize=3",
     "reading_order": true,
     "scale": 1.0,
-    "distance": 402,
-    "truth_chars": 1254,
+    "distance": 400,
+    "truth_chars": 1252,
     "missed": 51,
     "truth_words": 184,
     "confidence": 80.08579219886364,
-    "seconds": 14.627583016999779
+    "seconds": 12.099689556000158
   },
   {
     "stem": "IMG_1595",
@@ -114,7 +114,7 @@
     "missed": 22,
     "truth_words": 391,
     "confidence": 88.14466088809523,
-    "seconds": 34.3096855649992
+    "seconds": 22.8045963630002
   },
   {
     "stem": "IMG_1595",
@@ -127,7 +127,7 @@
     "missed": 22,
     "truth_words": 391,
     "confidence": 88.14466088809523,
-    "seconds": 34.3096855649992
+    "seconds": 22.8045963630002
   },
   {
     "stem": "IMG_1602",
@@ -140,7 +140,7 @@
     "missed": 5,
     "truth_words": 237,
     "confidence": 93.00128112301587,
-    "seconds": 6.308358797000437
+    "seconds": 6.235134624999773
   },
   {
     "stem": "IMG_1602",
@@ -153,7 +153,7 @@
     "missed": 5,
     "truth_words": 237,
     "confidence": 93.00128112301587,
-    "seconds": 6.308358797000437
+    "seconds": 6.235134624999773
   },
   {
     "stem": "IMG_1601",
@@ -166,7 +166,7 @@
     "missed": 69,
     "truth_words": 404,
     "confidence": 82.53109406318084,
-    "seconds": 18.961985827999342
+    "seconds": 14.772610119999626
   },
   {
     "stem": "IMG_1601",
@@ -179,7 +179,33 @@
     "missed": 69,
     "truth_words": 404,
     "confidence": 82.53109406318084,
-    "seconds": 18.961985827999342
+    "seconds": 14.772610119999626
+  },
+  {
+    "stem": "IMG_1603",
+    "psm": 3,
+    "pipeline": "grayscale deskew blur:ksize=3",
+    "reading_order": false,
+    "scale": 1.0,
+    "distance": 23,
+    "truth_chars": 2050,
+    "missed": 6,
+    "truth_words": 287,
+    "confidence": 95.45068239862543,
+    "seconds": 6.8208117300000595
+  },
+  {
+    "stem": "IMG_1603",
+    "psm": 3,
+    "pipeline": "grayscale deskew blur:ksize=3",
+    "reading_order": true,
+    "scale": 1.0,
+    "distance": 23,
+    "truth_chars": 2050,
+    "missed": 6,
+    "truth_words": 287,
+    "confidence": 95.45068239862543,
+    "seconds": 6.8208117300000595
   },
   {
     "stem": "IMG_1646",
@@ -192,7 +218,7 @@
     "missed": 9,
     "truth_words": 92,
     "confidence": 91.69288685714285,
-    "seconds": 5.044768017000024
+    "seconds": 6.062757062999481
   },
   {
     "stem": "IMG_1646",
@@ -205,33 +231,7 @@
     "missed": 9,
     "truth_words": 92,
     "confidence": 91.69288685714285,
-    "seconds": 5.044768017000024
-  },
-  {
-    "stem": "IMG_1603",
-    "psm": 3,
-    "pipeline": "grayscale deskew blur:ksize=3",
-    "reading_order": false,
-    "scale": 1.0,
-    "distance": 23,
-    "truth_chars": 2050,
-    "missed": 6,
-    "truth_words": 287,
-    "confidence": 95.45068239862543,
-    "seconds": 8.192020512999989
-  },
-  {
-    "stem": "IMG_1603",
-    "psm": 3,
-    "pipeline": "grayscale deskew blur:ksize=3",
-    "reading_order": true,
-    "scale": 1.0,
-    "distance": 23,
-    "truth_chars": 2050,
-    "missed": 6,
-    "truth_words": 287,
-    "confidence": 95.45068239862543,
-    "seconds": 8.192020512999989
+    "seconds": 6.062757062999481
   },
   {
     "stem": "IMG_1649",
@@ -244,7 +244,7 @@
     "missed": 21,
     "truth_words": 115,
     "confidence": 83.20165806666667,
-    "seconds": 4.021299046000422
+    "seconds": 4.307498549000229
   },
   {
     "stem": "IMG_1649",
@@ -257,7 +257,7 @@
     "missed": 21,
     "truth_words": 115,
     "confidence": 83.20165806666667,
-    "seconds": 4.021299046000422
+    "seconds": 4.307498549000229
   },
   {
     "stem": "IMG_1596",
@@ -270,7 +270,7 @@
     "missed": 28,
     "truth_words": 584,
     "confidence": 91.09853664183835,
-    "seconds": 39.29082291800023
+    "seconds": 32.660141970999575
   },
   {
     "stem": "IMG_1596",
@@ -283,7 +283,7 @@
     "missed": 28,
     "truth_words": 584,
     "confidence": 91.09853664183835,
-    "seconds": 39.29082291800023
+    "seconds": 32.660141970999575
   },
   {
     "stem": "IMG_1604",
@@ -291,12 +291,12 @@
     "pipeline": "grayscale deskew blur:ksize=3",
     "reading_order": false,
     "scale": 1.0,
-    "distance": 1021,
+    "distance": 1020,
     "truth_chars": 2963,
-    "missed": 118,
+    "missed": 117,
     "truth_words": 437,
     "confidence": 78.82031485370742,
-    "seconds": 7.356375150000531
+    "seconds": 6.673451353000019
   },
   {
     "stem": "IMG_1604",
@@ -304,12 +304,12 @@
     "pipeline": "grayscale deskew blur:ksize=3",
     "reading_order": true,
     "scale": 1.0,
-    "distance": 898,
+    "distance": 897,
     "truth_chars": 2963,
-    "missed": 118,
+    "missed": 117,
     "truth_words": 437,
     "confidence": 78.82031485370742,
-    "seconds": 7.356375150000531
+    "seconds": 6.673451353000019
   },
   {
     "stem": "IMG_1658",
@@ -322,7 +322,7 @@
     "missed": 14,
     "truth_words": 194,
     "confidence": 89.9376016633166,
-    "seconds": 6.212879163999787
+    "seconds": 4.280707918999724
   },
   {
     "stem": "IMG_1658",
@@ -335,7 +335,7 @@
     "missed": 14,
     "truth_words": 194,
     "confidence": 89.9376016633166,
-    "seconds": 6.212879163999787
+    "seconds": 4.280707918999724
   },
   {
     "stem": "IMG_1657",
@@ -348,7 +348,7 @@
     "missed": 39,
     "truth_words": 298,
     "confidence": 88.10000701355933,
-    "seconds": 7.77818343600029
+    "seconds": 5.034660397000152
   },
   {
     "stem": "IMG_1657",
@@ -361,7 +361,7 @@
     "missed": 39,
     "truth_words": 298,
     "confidence": 88.10000701355933,
-    "seconds": 7.77818343600029
+    "seconds": 5.034660397000152
   },
   {
     "stem": "IMG_1648",
@@ -374,7 +374,7 @@
     "missed": 16,
     "truth_words": 392,
     "confidence": 92.833813215,
-    "seconds": 12.342738380999435
+    "seconds": 10.870247721999476
   },
   {
     "stem": "IMG_1648",
@@ -387,6 +387,6 @@
     "missed": 16,
     "truth_words": 392,
     "confidence": 92.833813215,
-    "seconds": 12.342738380999435
+    "seconds": 10.870247721999476
   }
 ]

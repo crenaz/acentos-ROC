@@ -270,7 +270,7 @@ Baseline across 15 transcribed Cayman job listings, `--lang eng`, 2026-08-08
 
 | Configuration | CER | word miss | confidence |
 | --- | --- | --- | --- |
-| **psm 3 + deskew + reading order** *(current default)* | **12.0%** | 10.7% | 88.1% |
+| **psm 3 + deskew + reading order** *(current default)* | **11.9%** | 10.4% | 88.1% |
 | psm 3 + deskew | 18.9% | 10.7% | 88.1% |
 | psm 6 | 22.3% | 12.1% | 84.4% |
 | psm 6 + deskew | 22.3% | 11.9% | 84.3% |

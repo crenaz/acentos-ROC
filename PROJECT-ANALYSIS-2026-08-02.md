@@ -679,7 +679,13 @@ The audit also exposed a defect in the measurement rather than the data.
 `normalise()` stripped headings and bullets but not **inline emphasis**, so nine
 `**` markers across five transcriptions were being scored as characters the OCR had
 to reproduce, producing phantom tokens like `description:**`. Fixed; corpus word
-miss rate 10.7% → 10.4%, CER unchanged at 12.0%.
+miss rate 10.7% → 10.4%.
+
+**Both typos corrected 2026-08-08**, on the owner's instruction and after backing up
+the two files, since the corpus directory has no version control. `SILVERERSIDE` →
+`SILVERSIDE` (the same file's line 5 already spelled it correctly, so the heading
+contradicted its own body) and `full-tíme` → `full-time`. Corpus CER 12.0% → **11.9%**.
+A grep confirms no other stray accents remain in the English transcriptions.
 
 Worth noting the method's limit: it can only find a typo in text the OCR read
 correctly. A slip inside a passage the OCR also botched will not surface, so this
@@ -689,14 +695,9 @@ narrows the search rather than clearing the corpus.
 
 **Next:**
 
-1. **Two transcription typos to fix** (owner's files, not edited without asking):
-   `text-of-IMG_1599.md` heads with `SILVERERSIDE` where the logo reads
-   **SILVERSIDE**, and `text-of-IMG_1604.md` line 7 has `full-tíme` — an accented
-   í in an English word. Both verified against the photographs. Note the corpus
-   directory is not under version control, so edits there are not reversible.
-2. **A representative sample image** — the two committed samples are still a pill
+1. **A representative sample image** — the two committed samples are still a pill
    label and a Spanish book page, so a fresh clone cannot measure anything
    resembling the target corpus.
-3. **Per-image configuration**, if it still looks worthwhile — the old 15.8% oracle
+2. **Per-image configuration**, if it still looks worthwhile — the old 15.8% oracle
    predates deskew and reading order, so the headroom over a single fixed stack
    needs remeasuring before anyone invests in adaptive selection.
