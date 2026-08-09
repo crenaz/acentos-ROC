@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,6 +8,10 @@ version = "0.1.0"
 description = "Modular OCR pipeline using OpenCV preprocessing, pytesseract, and numpy."
 readme = "README.md"
 requires-python = ">=3.13"
+# SPDX expression per PEP 639. Deliberately not paired with a
+# "License :: OSI Approved :: ..." classifier -- setuptools rejects having both.
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 authors = [
   { name = "crenaz" }
 ]

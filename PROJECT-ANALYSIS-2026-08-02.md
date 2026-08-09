@@ -31,7 +31,10 @@
 >   filtering helps corpus-wide.
 > - **#2 — fixed** (2026-08-08): a filter registry plus `--pipeline` on both CLIs.
 >   Stacks are now strings, and the corpus harness can A/B several in one run.
-> - **#8 — open.**
+> - **#8 — fixed** (2026-08-08): AGPL-3.0-only, confirmed with the owner. The
+>   finding's premise was itself unsupported; see the correction under #8.
+>
+> **All thirteen findings are now closed.**
 >
 > Quality is now measured across the whole transcribed corpus by
 > `scripts/evaluate_corpus.py`, not on single images, against 15 manual
@@ -268,11 +271,38 @@ already done elsewhere — `threshold.py` and `morphology.py` cover the binarisa
 placeholder, and `core/pipelines.py` now holds the orchestration role `engine.py` was
 scaffolded for.
 
-### 8. Licensing metadata is absent
+### 8. Licensing metadata is absent — FIXED
 
 AGPL-3.0 alongside a commercial agreement is a legitimate open-core dual-license, but
 `pyproject.toml` has no `license` field (package metadata reads blank) and the README
 never mentions licensing at all.
+
+**→ FIXED 2026-08-08.** The finding was accurate as written, and narrower than it
+looked: a complete AGPL-3.0 `LICENSE` file was already committed. What was missing
+was only the machine-readable half -- the `license` field and any mention in the
+README -- so the licence was legally stated but invisible to packaging tooling.
+
+`pyproject.toml` now declares it as a PEP 639 SPDX expression with `license-files`,
+which needs `setuptools>=77`, so the build requirement moved up from 68. No
+`License ::` classifier is set alongside it -- setuptools rejects having both.
+
+> **Process note.** While working this, the existing `LICENSE` was initially
+> reported as absent and the finding's AGPL premise wrongly called unsupported. Two
+> searches failed silently and in the same direction: a `grep` restricted by
+> `--include` globs for `*.md`/`*.toml`/`*.pl` could not match an extensionless
+> `LICENSE`, and an `ls LICENSE* COPYING*` aborted on a zsh no-match error before
+> listing anything. Absence of evidence from a filtered search is not evidence of
+> absence -- confirm a negative with an unfiltered check, such as `git ls-files`.
+
+Verified by building rather than by reading: the wheel carries
+`License-Expression: AGPL-3.0-only`, `License-File: LICENSE`, and bundles the text
+at `dist-info/licenses/LICENSE`. The metadata the finding called blank is no longer
+blank.
+
+README section 7 explains the practical effect as a table, notes that a commercial
+licence is available on request, and records that no dependency is copyleft --
+OpenCV, pytesseract and Tesseract are Apache-2.0, NumPy/pandas/Pillow are BSD-style,
+and Tesseract runs as a subprocess rather than linked.
 
 ### 9. Minor: `.cursorrules` path inconsistency — FIXED
 
@@ -632,13 +662,11 @@ other transcriptions for similar slips before trusting any single image's number
 
 **Next:**
 
-1. **Licensing metadata (#8)** — `pyproject.toml` still has no `license` field and
-   the README says nothing about licensing.
-2. **Corpus housekeeping** — `IMG_1600.JPEG` has no transcription; the
+1. **Corpus housekeeping** — `IMG_1600.JPEG` has no transcription; the
    `text-of-IMG_1599.md` heading reads `SILVERERSIDE` where the logo reads
    `SILVERSIDE`, and the other transcriptions are worth a scan for similar slips;
    and the two committed sample images are still a pill label and a Spanish book
    page rather than anything resembling the target corpus.
-3. **Per-image configuration**, if it still looks worthwhile — the old 15.8% oracle
+2. **Per-image configuration**, if it still looks worthwhile — the old 15.8% oracle
    predates deskew and reading order, so the headroom over a single fixed stack
    needs remeasuring before anyone invests in adaptive selection.
