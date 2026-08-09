@@ -371,7 +371,37 @@ region and moves ahead of the line above it.
 
 Recorded against Tesseract 5.5.1 and the current `uv.lock`.
 
-### 5. Project layout
+### 5. Tests
+
+```bash
+uv run pytest -q          # 143 tests, about two seconds
+```
+
+| File | Covers |
+| --- | --- |
+| `test_filters.py` | each filter's behaviour, plus the contract they share |
+| `test_registry.py` | the `--pipeline` spec language and the filter registry |
+| `test_deskew.py` | skew estimation on synthetic scans and photo-like pages |
+| `test_layout.py` | region detection and reading-order reconstruction |
+| `test_metrics.py` | CER, word miss rate, transcription normalisation |
+| `test_corpus.py` | image-to-transcription pairing |
+| `test_pipelines.py` | the default stack's composition |
+
+No image or Tesseract install is needed — every fixture is synthesised, so the
+suite runs anywhere `uv sync` succeeds. Accuracy claims are *not* tested here;
+those come from `scripts/evaluate_corpus.py` against the real corpus, because a
+synthetic page cannot tell you whether a change helps a photograph.
+
+Two conventions worth keeping if you add tests:
+
+- **Pin behaviour, not implementation.** The filter tests assert that `open`
+  removes an isolated speck and `close` fills a pinhole, rather than that a
+  particular OpenCV constant was passed.
+- **Check the test can fail.** The filter tests were verified by deliberately
+  breaking the code: removing the even-kernel correction failed 3 tests, letting
+  `ResizeFilter` shrink failed 1, and swapping `open` with `close` failed 2.
+
+### 6. Project layout
 
 All code lives in a single importable package, `acentos_ocr`, under a `src/` layout:
 
@@ -388,9 +418,11 @@ src/acentos_ocr/
 Always import through the package — `from acentos_ocr.filters.grayscale import GrayscaleFilter`.
 Never use `src.` as an import prefix.
 
-### 6. Extending the pipeline
+### 7. Extending the pipeline
 
 - Add new filters under `src/acentos_ocr/filters/`, each inheriting from `BaseFilter` and implementing `apply(self, image: np.ndarray) -> np.ndarray`.
-- Wire new filters into the pipeline in `build_default_pipeline` inside `main.py` or create alternative pipelines in separate modules under `src/acentos_ocr/core/`.
+- **Register it** in `src/acentos_ocr/filters/registry.py`. That one line is what makes it reachable as `--pipeline yourfilter:option=value`, with its arguments coerced from the constructor's type annotations. A test fails if a filter module is missing from the registry.
+- Give it a behavioural test in `tests/test_filters.py`; the shared contract tests (uint8 output, no mutation of the input) pick it up automatically from the registry.
+- Measure it before adopting it: `scripts/evaluate_corpus.py --pipeline '...' --pipeline '...'`. Two of the filters already in the tree make results *worse* on this corpus, which is only knowable by measuring.
 
 Acentos-ROC

@@ -15,8 +15,8 @@
 >   under `--debug`.
 > - **#5 — fixed** (2026-08-07): one Tesseract pass per image instead of two, ~45%
 >   faster.
-> - **#6 — partially fixed**: 93 tests exist, but only `DeskewFilter` among the
->   seven filters has direct coverage.
+> - **#6 — fixed** (2026-08-08): 143 tests. Every filter has behavioural coverage,
+>   plus contract tests parameterised over the registry.
 > - **#7 — fixed** (2026-08-07): the three empty scaffolded modules are deleted.
 > - **#9 — fixed**: `.cursorrules` names the `acentos_ocr` paths.
 > - **#10 — fixed**: the sign inversion is corrected and covered by tests. Fixing it
@@ -221,17 +221,41 @@ byte-identical on `IMG_1595` (41.0% at psm 3, 53.7% at psm 4); wall clock for th
 two-PSM run fell from 34.5s to 19.0s. Confidence moved by <0.15 points because the
 filter now also drops whitespace-only tokens that were previously averaged in.
 
-### 6. Zero tests — PARTIALLY FIXED
+### 6. Zero tests — FIXED
 
 `tests/` is an empty directory, `pytest` is declared in
 `[project.optional-dependencies].dev`, and the blueprint specifically called for
 per-filter validation. Every filter is unverified.
 
-**→ PARTIALLY FIXED.** 74 tests across `test_deskew`, `test_layout`, `test_metrics`,
-`test_corpus` and `test_pipelines`. The gap the finding actually named is still
-open: of nine filters, only `DeskewFilter` has direct tests. `CLAHEFilter`,
-`GaussianBlurFilter`, `GrayscaleFilter`, `MorphologyFilter`, `ResizeFilter` and
-`AdaptiveThresholdFilter` are exercised only incidentally, or not at all.
+**→ FIXED 2026-08-08.** 143 tests. The per-filter validation the finding named is
+now in `tests/test_filters.py`: every filter has behavioural coverage, and two
+contract tests parameterised over the registry apply to all of them at once, so a
+newly added filter is covered the moment it is registered.
+
+The contract tests are the more valuable half. One asserts uint8 output; the other
+asserts **no filter mutates its input**, which the pipeline silently depends on —
+an in-place edit would corrupt the debug images written for earlier stages and make
+results differ depending on whether `--debug` was passed.
+
+Behaviour is pinned rather than implementation: `open` must remove an isolated
+speck and `close` must fill a pinhole, not "MORPH_OPEN was passed". Several
+undocumented quirks are now nailed down — `GaussianBlurFilter` and
+`AdaptiveThresholdFilter` silently round an even kernel up to odd,
+`MorphologyFilter` clamps a zero kernel to 1, `ResizeFilter` returns the input
+object unchanged rather than a copy when no resize is needed, and `GrayscaleFilter`
+is idempotent on single-channel input.
+
+**The tests were verified to fail.** A test suite that has never failed is not
+evidence of anything, so three deliberate regressions were introduced and measured:
+removing the even-kernel correction failed 3 tests, letting `ResizeFilter` shrink
+failed 1, and swapping `open` with `close` failed 2.
+
+That exercise turned up a trap worth recording. Swapping two OpenCV constants
+leaves the file byte-length identical, and `git checkout` restored it within the
+same second, so CPython reused the **stale `.pyc`** — timestamp invalidation
+compares mtime and size, and neither had changed. The restored code kept behaving
+like the mutated code until `__pycache__` was cleared. Anything that rewrites source
+programmatically should clear the caches before trusting a test result.
 
 ### 7. Three empty files are committed — FIXED
 
@@ -608,17 +632,13 @@ other transcriptions for similar slips before trusting any single image's number
 
 **Next:**
 
-1. **Per-filter tests (#6)** — 93 tests exist, but of the seven filters only
-   `DeskewFilter` is directly covered. `CLAHEFilter`, `ResizeFilter`,
-   `MorphologyFilter` and `AdaptiveThresholdFilter` are the ones no measurement
-   currently protects.
-2. **Licensing metadata (#8)** — `pyproject.toml` still has no `license` field and
+1. **Licensing metadata (#8)** — `pyproject.toml` still has no `license` field and
    the README says nothing about licensing.
-3. **Corpus housekeeping** — `IMG_1600.JPEG` has no transcription; the
+2. **Corpus housekeeping** — `IMG_1600.JPEG` has no transcription; the
    `text-of-IMG_1599.md` heading reads `SILVERERSIDE` where the logo reads
    `SILVERSIDE`, and the other transcriptions are worth a scan for similar slips;
    and the two committed sample images are still a pill label and a Spanish book
    page rather than anything resembling the target corpus.
-4. **Per-image configuration**, if it still looks worthwhile — the old 15.8% oracle
+3. **Per-image configuration**, if it still looks worthwhile — the old 15.8% oracle
    predates deskew and reading order, so the headroom over a single fixed stack
    needs remeasuring before anyone invests in adaptive selection.
