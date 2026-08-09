@@ -15,8 +15,8 @@
 >   under `--debug`.
 > - **#5 — fixed** (2026-08-07): one Tesseract pass per image instead of two, ~45%
 >   faster.
-> - **#6 — partially fixed**: 74 tests exist, but only `DeskewFilter` among the
->   nine filters has direct coverage.
+> - **#6 — partially fixed**: 93 tests exist, but only `DeskewFilter` among the
+>   seven filters has direct coverage.
 > - **#7 — fixed** (2026-08-07): the three empty scaffolded modules are deleted.
 > - **#9 — fixed**: `.cursorrules` names the `acentos_ocr` paths.
 > - **#10 — fixed**: the sign inversion is corrected and covered by tests. Fixing it
@@ -29,7 +29,9 @@
 > - **#13 — investigated, closed as capture-limited** (2026-08-08): the two worst
 >   images fail on perspective and small text, and neither upscaling nor confidence
 >   filtering helps corpus-wide.
-> - **#2, #8 — open.**
+> - **#2 — fixed** (2026-08-08): a filter registry plus `--pipeline` on both CLIs.
+>   Stacks are now strings, and the corpus harness can A/B several in one run.
+> - **#8 — open.**
 >
 > Quality is now measured across the whole transcribed corpus by
 > `scripts/evaluate_corpus.py`, not on single images, against 15 manual
@@ -151,7 +153,7 @@ files anywhere.
 added the missing `__init__.py` files, made package discovery explicit, and switched
 to an editable install so the tree and environment cannot drift again.
 
-### 2. Four filters are built but unreachable
+### 2. Four filters are built but unreachable — FIXED
 
 `build_default_pipeline` (`main.py:15-21`) hardcodes
 Grayscale → GaussianBlur(5) → AdaptiveThreshold(15,5) → Morphology(close,2).
@@ -160,6 +162,36 @@ wired into nothing. There is no CLI flag to compose a stack — so the entire pa
 the Strategy pattern (A/B testing preprocessing stacks, which
 `suggested_instructions.md:52` explicitly calls out as the point) requires editing
 source.
+
+**→ FIXED 2026-08-08.** `src/acentos_ocr/filters/registry.py` maps every filter to a
+short name and builds it from a `name:key=value` spec, coercing arguments with the
+constructor's own type annotations so the filters stay the single source of truth for
+what they accept. `main.py --pipeline` composes a stack from the command line;
+`scripts/evaluate_corpus.py --pipeline` takes several and scores them all against the
+corpus in one run. `build_default_pipeline` is now defined *as* a spec
+(`DEFAULT_SPEC`), so the documented default and the running default cannot diverge.
+
+A test asserts every filter module in the package appears in the registry, which is
+the precise condition this finding described and would have caught it.
+
+**What the capability immediately showed.** Four results that previously each needed
+a source edit and a separate run, `--psm 3`, reading order on:
+
+| Stack | CER | word miss |
+| --- | --- | --- |
+| **`grayscale deskew blur:ksize=3`** (default) | **12.0%** | 10.7% |
+| `grayscale deskew blur:ksize=5` | 12.4% | 11.6% |
+| `grayscale deskew` (no blur) | 12.4% | 11.0% |
+| `grayscale deskew clahe blur:ksize=3` | 18.1% | 12.1% |
+| `grayscale deskew blur:ksize=5 threshold morphology` (original) | 27.1% | 21.3% |
+
+- The **blur is nearly irrelevant** — removing it costs 0.4 points, widening it to 5
+  costs the same. The default stack's least consequential element.
+- **CLAHE hurts**, +6.1 points, and catastrophically on `IMG_1648` (4.3% → 48.5%).
+  Boosting local contrast on newsprint amplifies paper texture along with the ink.
+- The **original binarising stack is confirmed catastrophic at corpus scale**, 27.1%
+  against 12.0%, failing `IMG_1598` outright at 100% CER. Finding #3 measured that on
+  one image; fifteen agree.
 
 ### 3. The default stack is actively hostile to accents
 
@@ -576,19 +608,17 @@ other transcriptions for similar slips before trusting any single image's number
 
 **Next:**
 
-1. **Composable pipelines via CLI (#2)** — the last structural finding, and the
-   harness now gives it something to measure against. Note the headroom figure
-   needs recomputing: the 15.8% per-image oracle was measured before deskew and
-   reading order became defaults, against a fixed baseline that has since improved
-   from 18.9% to 12.0%.
-2. **Per-filter tests (#6)** — 74 tests exist, but of the nine filters only
+1. **Per-filter tests (#6)** — 93 tests exist, but of the seven filters only
    `DeskewFilter` is directly covered. `CLAHEFilter`, `ResizeFilter`,
    `MorphologyFilter` and `AdaptiveThresholdFilter` are the ones no measurement
    currently protects.
-3. **Licensing metadata (#8)** — `pyproject.toml` still has no `license` field and
+2. **Licensing metadata (#8)** — `pyproject.toml` still has no `license` field and
    the README says nothing about licensing.
-4. **Corpus housekeeping** — `IMG_1600.JPEG` has no transcription; the
+3. **Corpus housekeeping** — `IMG_1600.JPEG` has no transcription; the
    `text-of-IMG_1599.md` heading reads `SILVERERSIDE` where the logo reads
    `SILVERSIDE`, and the other transcriptions are worth a scan for similar slips;
    and the two committed sample images are still a pill label and a Spanish book
    page rather than anything resembling the target corpus.
+4. **Per-image configuration**, if it still looks worthwhile — the old 15.8% oracle
+   predates deskew and reading order, so the headroom over a single fixed stack
+   needs remeasuring before anyone invests in adaptive selection.

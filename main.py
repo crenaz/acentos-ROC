@@ -4,13 +4,20 @@ import argparse
 from pathlib import Path
 
 from acentos_ocr.config import resolve_tessdata_dir
-from acentos_ocr.core.pipelines import build_default_pipeline
+from acentos_ocr.core.pipelines import build_default_pipeline, build_pipeline
+from acentos_ocr.filters.registry import describe_filters
 from acentos_ocr.ocr.tesseract_wrapper import TesseractWrapper
 from acentos_ocr.utils.image_io import load_image
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run OCR on an image using the preprocessing pipeline.")
+    parser = argparse.ArgumentParser(
+        description="Run OCR on an image using the preprocessing pipeline.",
+        # The filter table lives in the epilog because only description and epilog
+        # escape argparse's re-wrapping; as help text its columns collapse.
+        epilog="filters available to --pipeline:\n" + describe_filters(),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("image", type=str, help="Path to the input image.")
     parser.add_argument(
         "--debug",
@@ -47,6 +54,17 @@ def main() -> None:
             "Rebuild reading order from word geometry when the page has columns. "
             "On by default, worth 18.9%% -> 12.0%% character error rate across the "
             "corpus. Costs no extra OCR, and single-column pages are left alone."
+        ),
+    )
+    parser.add_argument(
+        "--pipeline",
+        nargs="+",
+        metavar="FILTER",
+        default=None,
+        help=(
+            "Compose the preprocessing stack explicitly, e.g. --pipeline "
+            "grayscale clahe blur:ksize=3. Each entry is a filter name with "
+            "optional key=value arguments; see the list below. Overrides --deskew."
         ),
     )
     parser.add_argument(
@@ -96,15 +114,21 @@ def main() -> None:
     args = parser.parse_args()
 
     img_path = Path(args.image)
-    image = load_image(img_path)
-
     debug_dir = Path(args.out_debug_dir) if args.debug else None
     if args.debug:
         print(f"Pipeline steps (images written to {debug_dir}/):")
 
-    pipeline = build_default_pipeline(
-        debug=args.debug, debug_dir=debug_dir, deskew=args.deskew
-    )
+    if args.pipeline:
+        try:
+            pipeline = build_pipeline(args.pipeline, debug=args.debug, debug_dir=debug_dir)
+        except ValueError as error:
+            parser.error(str(error))   # a typo in a spec is user error, not a crash
+    else:
+        pipeline = build_default_pipeline(
+            debug=args.debug, debug_dir=debug_dir, deskew=args.deskew
+        )
+
+    image = load_image(img_path)
     processed = pipeline.run(image, name=img_path.stem)
 
     tessdata_dir = resolve_tessdata_dir(args.tessdata_dir)

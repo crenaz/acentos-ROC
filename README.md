@@ -132,9 +132,57 @@ Flags:
 - `--lang`: Tesseract language code. Defaults to `spa+eng`.
 - `--deskew` / `--no-deskew`: correct page skew before OCR. **On by default** — see below.
 - `--reading-order` / `--no-reading-order`: rebuild reading order from word geometry on multi-column pages. **On by default** — see below.
+- `--pipeline`: compose the preprocessing stack explicitly — see below. Overrides `--deskew`.
 - `--oem`: OCR Engine Mode — `1` (LSTM) or `3` (default). Legacy modes are gone in Tesseract 5.
 - `--tessdata-dir`: override the language-model directory (defaults to project-local `tessdata/`).
 - `--tesseract-cmd`: override path to Tesseract binary if needed (default is usually `/usr/bin/tesseract`).
+
+#### Composing a pipeline
+
+Every filter is reachable by name, so a preprocessing stack is a command-line
+argument rather than a source edit:
+
+```bash
+uv run python main.py photo.JPEG --pipeline grayscale deskew blur:ksize=3
+uv run python main.py photo.JPEG --pipeline grayscale clahe:clip_limit=3 threshold
+```
+
+Each entry is `name` or `name:key=value,key=value`. Arguments are coerced using the
+filter constructor's own type annotations, so the filters remain the single source
+of truth for what they accept, and `main.py --help` lists every filter with its
+defaults. An unknown name or parameter is a command-line error listing the valid
+options, not a traceback.
+
+The same flag on `scripts/evaluate_corpus.py` takes several stacks and scores them
+against the whole corpus in one run:
+
+```bash
+uv run python scripts/evaluate_corpus.py \
+    --pipeline 'grayscale deskew blur:ksize=3' \
+    --pipeline 'grayscale deskew clahe blur:ksize=3'
+```
+
+Measured that way, `--lang eng`, `--psm 3`, reading order on
+(`results/stacks-2026-08-08.json`):
+
+| Stack | CER | word miss | confidence |
+| --- | --- | --- | --- |
+| **`grayscale deskew blur:ksize=3`** *(default)* | **12.0%** | 10.7% | 88.1% |
+| `grayscale deskew blur:ksize=5` | 12.4% | 11.6% | 88.0% |
+| `grayscale deskew` *(no blur)* | 12.4% | 11.0% | 87.4% |
+| `grayscale deskew clahe blur:ksize=3` | 18.1% | 12.1% | 85.4% |
+| `grayscale deskew blur:ksize=5 threshold morphology` *(the original stack)* | 27.1% | 21.3% | 69.6% |
+
+Three things fall out of that:
+
+- **The blur is nearly irrelevant.** Dropping it entirely costs 0.4 points, and
+  widening it to 5 costs the same. It is the least consequential knob in the stack.
+- **CLAHE hurts, badly and unevenly.** +6.1 points overall, and it destroys
+  `IMG_1648` specifically (4.3% → 48.5%). Boosting local contrast on newsprint
+  amplifies paper texture along with the ink.
+- **The original binarising stack is confirmed catastrophic at corpus scale.**
+  27.1% against 12.0%, and it fails one image completely (`IMG_1598`, 100% CER).
+  That was previously measured on a single image; the corpus agrees.
 
 #### Reference baselines
 

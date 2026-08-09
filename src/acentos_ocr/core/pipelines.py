@@ -1,11 +1,38 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from pathlib import Path
 
-from ..filters.deskew import DeskewFilter
-from ..filters.gaussian_blur import GaussianBlurFilter
-from ..filters.grayscale import GrayscaleFilter
+from ..filters.registry import build_filter
 from .processor import PreprocessingPipeline
+
+#: The default stack, written in the same spec language `--pipeline` accepts, so
+#: the documented default and the thing that actually runs cannot drift apart.
+DEFAULT_SPEC = ("grayscale", "deskew", "blur:ksize=3")
+
+#: The same stack with deskew removed, for `--no-deskew`.
+NO_DESKEW_SPEC = ("grayscale", "blur:ksize=3")
+
+
+def build_pipeline(
+    specs: Iterable[str],
+    debug: bool = False,
+    debug_dir: str | Path | None = None,
+) -> PreprocessingPipeline:
+    """
+    Build a pipeline from filter specs such as `("grayscale", "blur:ksize=3")`.
+
+    This is what makes the Strategy pattern pay for itself. Every filter in the
+    project was reachable only by editing `main.py` until now, so comparing two
+    preprocessing stacks meant changing source between runs -- which is precisely
+    the experiment the architecture was chosen to make easy. With specs, a stack is
+    a string, and `scripts/evaluate_corpus.py` can sweep several against the corpus
+    in one command.
+    """
+    pipeline = PreprocessingPipeline(debug=debug, debug_dir=debug_dir)
+    for spec in specs:
+        pipeline.add_filter(build_filter(spec))
+    return pipeline
 
 
 def build_default_pipeline(
@@ -29,9 +56,8 @@ def build_default_pipeline(
     which builds pipelines inside worker processes -- can import it without
     reaching back into the CLI entry point.
     """
-    pipeline = PreprocessingPipeline(debug=debug, debug_dir=debug_dir)
-    pipeline.add_filter(GrayscaleFilter())
-    if deskew:
-        pipeline.add_filter(DeskewFilter())
-    pipeline.add_filter(GaussianBlurFilter(ksize=3))
-    return pipeline
+    return build_pipeline(
+        DEFAULT_SPEC if deskew else NO_DESKEW_SPEC,
+        debug=debug,
+        debug_dir=debug_dir,
+    )
