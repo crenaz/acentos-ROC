@@ -660,13 +660,43 @@ other transcriptions for similar slips before trusting any single image's number
 
 ---
 
+### Corpus audit, 2026-08-08
+
+`IMG_1600` is a masthead shot kept to record where the clippings came from, not a
+sample. Rather than deleting it to quiet the harness, `discover()` now honours a
+`.corpus-ignore` file, so a deliberate exclusion is recorded with its reason and the
+"untranscribed" warning keeps meaning something.
+
+The remaining transcriptions were audited for typos like the `SILVERERSIDE` one, by
+looking for truth words the OCR never produces but comes within one or two edits of
+— the signature of a correct read against a mistyped reference. Most hits were
+ordinary OCR noise (curly apostrophes, trailing punctuation, `1` for `I`). Two were
+real, both listed below. Two more looked wrong and were not: `IMG_1596`'s
+`CI$48,096 to C$63,120` is faithful — the **advert itself** is inconsistent — and
+`IMG_1601` genuinely advertises two salary bands.
+
+The audit also exposed a defect in the measurement rather than the data.
+`normalise()` stripped headings and bullets but not **inline emphasis**, so nine
+`**` markers across five transcriptions were being scored as characters the OCR had
+to reproduce, producing phantom tokens like `description:**`. Fixed; corpus word
+miss rate 10.7% → 10.4%, CER unchanged at 12.0%.
+
+Worth noting the method's limit: it can only find a typo in text the OCR read
+correctly. A slip inside a passage the OCR also botched will not surface, so this
+narrows the search rather than clearing the corpus.
+
+---
+
 **Next:**
 
-1. **Corpus housekeeping** — `IMG_1600.JPEG` has no transcription; the
-   `text-of-IMG_1599.md` heading reads `SILVERERSIDE` where the logo reads
-   `SILVERSIDE`, and the other transcriptions are worth a scan for similar slips;
-   and the two committed sample images are still a pill label and a Spanish book
-   page rather than anything resembling the target corpus.
-2. **Per-image configuration**, if it still looks worthwhile — the old 15.8% oracle
+1. **Two transcription typos to fix** (owner's files, not edited without asking):
+   `text-of-IMG_1599.md` heads with `SILVERERSIDE` where the logo reads
+   **SILVERSIDE**, and `text-of-IMG_1604.md` line 7 has `full-tíme` — an accented
+   í in an English word. Both verified against the photographs. Note the corpus
+   directory is not under version control, so edits there are not reversible.
+2. **A representative sample image** — the two committed samples are still a pill
+   label and a Spanish book page, so a fresh clone cannot measure anything
+   resembling the target corpus.
+3. **Per-image configuration**, if it still looks worthwhile — the old 15.8% oracle
    predates deskew and reading order, so the headroom over a single fixed stack
    needs remeasuring before anyone invests in adaptive selection.

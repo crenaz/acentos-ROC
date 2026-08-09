@@ -15,6 +15,11 @@ from acentos_ocr.eval.metrics import cer, levenshtein, normalise, word_miss_rate
         ("· A bullet", "a bullet"),  # U+00B7, as pasted from some transcriptions
         ("- A bullet", "a bullet"),
         ("line one\n\n   line two", "line one line two"),
+        ("**Job Description:** Responsible for", "job description: responsible for"),
+        ("__bold__ text", "bold text"),
+        ("**Requirements:**", "requirements:"),
+        # emphasis is removed before bullets, so no stray marker survives
+        ("* **Must** have experience", "must have experience"),
     ],
 )
 def test_normalise_strips_markdown_scaffolding(raw, expected):

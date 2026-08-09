@@ -235,7 +235,18 @@ uv run python scripts/evaluate_corpus.py --psm 3 4 6 --deskew both --per-image
 
 Pairing is by filename: an image `IMG_1594.JPEG` anywhere under the root is matched
 with `text-of-IMG_1594.md`, also anywhere under the root. Images with no
-transcription are listed rather than silently skipped.
+transcription are listed rather than silently skipped, because a benchmark that
+quietly shrinks stops meaning anything.
+
+Not every photograph in a corpus directory is a sample, though — mastheads kept for
+provenance, duplicates, reference shots. List those in a `.corpus-ignore` file at
+the corpus root and they are excluded from both counts, so the warning keeps its
+value without anyone having to delete a photo to silence it:
+
+```
+# Image stems deliberately excluded from the benchmark, one per line.
+IMG_1600    # masthead: newspaper logos, records where the clippings came from
+```
 
 It reports two metrics side by side, and **the gap between them is the point**:
 

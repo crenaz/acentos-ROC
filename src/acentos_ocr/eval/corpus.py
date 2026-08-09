@@ -13,6 +13,12 @@ IMAGE_SUFFIXES = {".jpeg", ".jpg", ".png", ".tif", ".tiff"}
 #: machine-specific absolute path.
 CORPUS_ENV_VAR = "ACENTOS_CORPUS"
 
+#: Optional file in the corpus root listing image stems that are deliberately not
+#: transcribed, one per line, `#` for comments. Not every photograph in a corpus
+#: directory is a sample -- there are reference shots, mastheads, duplicates -- and
+#: those should be distinguishable from a transcription somebody still owes.
+IGNORE_FILE = ".corpus-ignore"
+
 
 @dataclass(frozen=True)
 class Sample:
@@ -34,6 +40,18 @@ def default_root() -> Path | None:
     return Path(root) if root else None
 
 
+def read_ignored(root: Path) -> set[str]:
+    """Image stems the corpus deliberately excludes, from the optional ignore file."""
+    path = Path(root) / IGNORE_FILE
+    if not path.is_file():
+        return set()
+    return {
+        line.split("#", 1)[0].strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.split("#", 1)[0].strip()
+    }
+
+
 def discover(root: Path) -> tuple[list[Sample], list[Path]]:
     """
     Pair every image under `root` with its transcription.
@@ -44,13 +62,18 @@ def discover(root: Path) -> tuple[list[Sample], list[Path]]:
     reorganised without breaking the pairing.
 
     Returns the matched samples and any images that have no transcription yet --
-    the latter are reported rather than silently skipped, because a corpus
-    quietly shrinking is how a benchmark stops meaning anything.
+    the latter are reported rather than silently skipped, because a corpus quietly
+    shrinking is how a benchmark stops meaning anything.
+
+    Images listed in `.corpus-ignore` are left out of both. A photograph that is
+    not a sample -- a masthead shot kept for provenance, say -- should not be
+    deleted to quiet the warning, and should not keep raising one either.
     """
     root = Path(root).resolve()
     if not root.is_dir():
         raise NotADirectoryError(f"Corpus root does not exist: {root}")
 
+    ignored = read_ignored(root)
     truths = {
         path.stem.removeprefix("text-of-"): path
         for path in root.rglob("text-of-*.md")
@@ -59,7 +82,7 @@ def discover(root: Path) -> tuple[list[Sample], list[Path]]:
     samples: list[Sample] = []
     unmatched: list[Path] = []
     for image in sorted(root.rglob("*")):
-        if image.suffix.lower() not in IMAGE_SUFFIXES:
+        if image.suffix.lower() not in IMAGE_SUFFIXES or image.stem in ignored:
             continue
         truth = truths.get(image.stem)
         if truth is None:

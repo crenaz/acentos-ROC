@@ -8,6 +8,10 @@ from collections import Counter
 
 # Transcriptions are Markdown; OCR output is plain text. Comparing them raw would
 # score formatting rather than recognition.
+# Inline emphasis, stripped before bullets so that `**Job Description:**` does not
+# leave a stray marker behind. Nine of these across five transcriptions were being
+# scored as characters the OCR had to reproduce.
+_EMPHASIS = re.compile(r"\*\*|__")
 _HEADING = re.compile(r"^#+\s*", re.M)
 _BULLET = re.compile(r"^[.·*-]\s*", re.M)
 _WHITESPACE = re.compile(r"\s+")
@@ -21,6 +25,7 @@ _ANNOTATION = re.compile(r"^(?:[A-Z]+\s+)?LOGO:\s*", re.M | re.I)
 
 def normalise(text: str) -> str:
     """Strip Markdown scaffolding and transcriber annotations, collapse whitespace."""
+    text = _EMPHASIS.sub("", text)
     text = _HEADING.sub("", text)
     text = _BULLET.sub("", text)
     text = _ANNOTATION.sub("", text)
