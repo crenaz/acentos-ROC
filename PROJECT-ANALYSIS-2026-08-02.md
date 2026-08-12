@@ -693,11 +693,66 @@ narrows the search rather than clearing the corpus.
 
 ---
 
-**Next:**
+## Next — checklist, updated 2026-08-12
 
-1. **A representative sample image** — the two committed samples are still a pill
-   label and a Spanish book page, so a fresh clone cannot measure anything
-   resembling the target corpus.
-2. **Per-image configuration**, if it still looks worthwhile — the old 15.8% oracle
-   predates deskew and reading order, so the headroom over a single fixed stack
-   needs remeasuring before anyone invests in adaptive selection.
+The two items below marked *(from 2026-08-08)* are the original next-steps list,
+unchanged. The rest were raised while adding `--save-text` for a new batch of
+clipping photographs, and while recovering the previous session's context.
+
+### In flight
+
+- [ ] **Commit the `--save-text` work.** `main.py` and `README.md` are modified;
+  `src/acentos_ocr/utils/text_io.py` and `tests/test_text_io.py` are untracked. 157
+  tests pass. The CLI now takes several images and writes each one's text to
+  `DIR/<stem>.txt`; a batch reports per-image failures and exits non-zero rather
+  than dying on the first bad file.
+- [ ] **Record the new corpus path here once it is known.** A new set of job-listing
+  photographs is coming and lives somewhere other than the current corpus. Note the
+  corpus has already moved twice — a stale
+  `Claude-Box/JOBS_RESUME/Raw-Photos-Of-Cayman-Job-Listings` path survives in an old
+  transcript and no longer exists — so locate it by filename (`IMG_*.JPEG`,
+  `text-of-*.md`) rather than trusting any path written down, including this one.
+
+### Handling the new batch
+
+- [ ] **Treat `--save-text` output as a first draft, never as ground truth.** Run the
+  new photos into a scratch directory, hand-correct there, and only then place the
+  result as `text-of-<stem>.md`. The corpus has no version control and no undo, and
+  the `SILVERERSIDE` slip found under #13 shows what an unreviewed reference costs:
+  error that cannot be earned back by any amount of pipeline work. `save_text()`
+  refuses the `text-of-*` namespace outright, so the hand-correction step cannot be
+  skipped by accident.
+- [ ] **Triage the new photos for capture defects before transcribing them.**
+  Transcription is the expensive step and it is wasted on a photograph the pipeline
+  cannot read. `IMG_1599` and `IMG_1604` sit near 30% CER and respond to no
+  configuration — condensed type shot soft, and a narrow column shot at an angle with
+  a 31px median word height. Both are dominated by perspective and curvature, which a
+  single global rotation is structurally unable to correct (#13). Anything in the new
+  set that looks like those two should be re-shot square-on and closer, not
+  transcribed.
+- [ ] **Route mastheads and reference shots to `.corpus-ignore`.** A batch of
+  clippings usually carries a few frames that are not samples. `IMG_1600` is the
+  precedent: recorded as a deliberate exclusion rather than deleted, so the
+  harness's "untranscribed" warning keeps meaning something.
+
+### Open measurements
+
+- [ ] **A representative sample image** *(from 2026-08-08)* — the two committed
+  samples are still a pill label and a Spanish book page, so a fresh clone cannot
+  measure anything resembling the target corpus. The incoming batch is the obvious
+  place to find one.
+- [ ] **Per-image configuration**, if it still looks worthwhile *(from 2026-08-08)* —
+  the old 15.8% oracle predates deskew and reading order, so the headroom over a
+  single fixed stack needs remeasuring before anyone invests in adaptive selection.
+- [ ] **`tessdata_best` against the system models, on the corpus.** The project
+  defaults to `tessdata_best`, chosen for Spanish; the system models measured faster
+  and better for English. But that comparison was made on the two committed samples
+  before the harness existed, and it compared **confidence**, which this project has
+  now shown twice moves opposite to accuracy (#11, #13). It has never been re-run as
+  CER across fifteen images. Cheap to settle, and it is the last default still
+  resting on pre-harness evidence.
+- [ ] **Spanish ground truth — a handful of transcribed pages.** There is none in the
+  corpus at all, so nothing here measures the accented-character OCR the project is
+  named for and the commercial interest rests on. Every number in this document is
+  English newsprint. Not urgent against the current focus, but it is the only thing
+  that would show whether the pipeline is near good enough to sell.
