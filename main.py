@@ -11,6 +11,7 @@ from acentos_ocr.core.pipelines import build_default_pipeline, build_pipeline
 from acentos_ocr.filters.registry import describe_filters
 from acentos_ocr.ocr.tesseract_wrapper import TesseractWrapper
 from acentos_ocr.utils.image_io import load_image
+from acentos_ocr.utils.text_io import TEXT_SUFFIX, resolve_text_paths, save_text
 
 
 def main() -> None:
@@ -21,7 +22,25 @@ def main() -> None:
         epilog="filters available to --pipeline:\n" + describe_filters(),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("image", type=str, help="Path to the input image.")
+    parser.add_argument(
+        "images",
+        type=str,
+        nargs="+",
+        metavar="IMAGE",
+        help="Path to the input image. Several may be given; each is OCR'd in turn.",
+    )
+    parser.add_argument(
+        "--save-text",
+        type=str,
+        default=None,
+        metavar="DIR",
+        help=(
+            f"Write each picture's OCR text to DIR/<stem>{TEXT_SUFFIX} as UTF-8, "
+            "creating DIR if needed. Note this is not the corpus convention: a "
+            "hand-made transcription of IMG_1594.JPEG is text-of-IMG_1594.md, and "
+            "that namespace is ground truth, so nothing here will ever write it."
+        ),
+    )
     parser.add_argument(
         "--debug",
         action="store_true",
@@ -116,10 +135,21 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    img_path = Path(args.image)
+    images = [Path(path) for path in args.images]
     debug_dir = Path(args.out_debug_dir) if args.debug else None
     if args.debug:
         print(f"Pipeline steps (images written to {debug_dir}/):")
+
+    # Both the names and the destination are settled before any OCR runs. A clash
+    # discovered twelve pages in would already have overwritten a page's text, and
+    # an unwritable directory is worth knowing about before a minute of Tesseract.
+    text_paths: list[Path | None] = [None] * len(images)
+    if args.save_text:
+        try:
+            text_paths = resolve_text_paths(images, args.save_text)
+            Path(args.save_text).mkdir(parents=True, exist_ok=True)
+        except (ValueError, OSError) as error:
+            parser.error(str(error))
 
     if args.pipeline:
         try:
@@ -130,9 +160,6 @@ def main() -> None:
         pipeline = build_default_pipeline(
             debug=args.debug, debug_dir=debug_dir, deskew=args.deskew
         )
-
-    image = load_image(img_path)
-    processed = pipeline.run(image, name=img_path.stem)
 
     tessdata_dir = resolve_tessdata_dir(args.tessdata_dir)
     if args.debug:
@@ -146,15 +173,50 @@ def main() -> None:
         tessdata_dir=tessdata_dir,
         reading_order=args.reading_order,
     )
-    result = ocr.process_image(processed, custom_config=config)
 
-    print("=== OCR TEXT ===")
-    print(result.text)
-    print("\n=== SUMMARY ===")
-    print(f"Average confidence: {result.confidence:.2f}%")
-    print(f"Config used: {result.config_used}")
-    if result.confidence < 70:
-        print("Tip: If quality is low, try --psm 3 or --psm 4, or --oem 1 to force the LSTM engine.")
+    confidences: list[float] = []
+    failures: list[Path] = []
+    for position, (img_path, text_path) in enumerate(zip(images, text_paths), start=1):
+        if len(images) > 1:
+            print(f"\n=== [{position}/{len(images)}] {img_path.name} ===")
+
+        try:
+            image = load_image(img_path)
+            processed = pipeline.run(image, name=img_path.stem)
+            result = ocr.process_image(processed, custom_config=config)
+        except Exception as error:
+            # A batch must not lose the pages it already transcribed to one
+            # unreadable file or one Tesseract failure. Report it, carry on, and
+            # exit non-zero below so the run is not mistaken for a clean one.
+            print(f"FAILED {img_path}: {error}")
+            failures.append(img_path)
+            continue
+
+        print("=== OCR TEXT ===")
+        print(result.text)
+        print("\n=== SUMMARY ===")
+        print(f"Average confidence: {result.confidence:.2f}%")
+        print(f"Config used: {result.config_used}")
+        if result.confidence < 70:
+            print("Tip: If quality is low, try --psm 3 or --psm 4, or --oem 1 to force the LSTM engine.")
+
+        confidences.append(result.confidence)
+        if text_path is not None:
+            save_text(text_path, result.text)
+            print(f"Wrote {text_path}")
+
+    if len(images) > 1:
+        mean = sum(confidences) / len(confidences) if confidences else 0.0
+        print("\n=== BATCH ===")
+        print(
+            f"{len(confidences)} of {len(images)} images transcribed, "
+            f"mean confidence {mean:.2f}%"
+        )
+        for failed in failures:
+            print(f"  failed: {failed}")
+
+    if failures:
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

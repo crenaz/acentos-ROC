@@ -97,6 +97,47 @@ uv run python main.py document.png --debug --out-debug-dir debug --psm 6
 
 `uv run` executes inside the locked environment without needing to activate it.
 
+#### Transcribing a set of pictures
+
+Several images can be given at once, and `--save-text` writes each one's text to
+its own file — `DIR/<stem>.txt`, UTF-8, directory created if needed:
+
+```bash
+uv run python main.py ~/clippings/July18/*.JPEG --save-text transcripts/
+```
+
+```
+=== [1/12] IMG_1594.JPEG ===
+=== OCR TEXT ===
+...
+=== SUMMARY ===
+Average confidence: 82.41%
+Config used: --oem 3 --psm 3 --tessdata-dir /…/tessdata
+Wrote transcripts/IMG_1594.txt
+...
+=== BATCH ===
+12 of 12 images transcribed, mean confidence 80.31%
+```
+
+Three things worth knowing about the batch behaviour:
+
+- **`<stem>.txt` is not the corpus convention, deliberately.** A hand-made
+  transcription of `IMG_1594.JPEG` is `text-of-IMG_1594.md`, and those are ground
+  truth — the yardstick every CER figure below is measured against. OCR output
+  under that name would be the pipeline grading its own homework, so the writer
+  refuses the `text-of-*` namespace outright. `.txt` is also invisible to
+  `corpus.discover`, which globs only `text-of-*.md` and image suffixes, so
+  pointing `--save-text` at the corpus tree cannot disturb it either.
+- **Colliding output names are refused before any OCR runs.** `a/IMG_1.JPEG` and
+  `b/IMG_1.png` both want `IMG_1.txt`; that is caught in the second it takes to
+  compare names, rather than after eleven pages of work have been overwritten.
+- **One bad file does not sink the batch.** An unreadable image or a Tesseract
+  failure is reported, the remaining pictures still run, and the command exits
+  non-zero so a partial run is not mistaken for a clean one.
+
+A single image prints exactly what it always did — the per-picture headers and
+the batch summary appear only when there is more than one.
+
 #### Diagnosing a bad result
 
 `--debug` writes one image per pipeline stage, numbered in execution order:
@@ -127,6 +168,7 @@ several megabytes per stage.
 
 Flags:
 
+- `--save-text DIR`: write each picture's OCR text to `DIR/<stem>.txt` — see above.
 - `--debug`: prints each pipeline step with its shape and dtype, reports which tessdata directory was used, and writes **every intermediate image** to the `debug/` directory.
 - `--psm`: Tesseract Page Segmentation Mode (6 works well for blocks of text).
 - `--lang`: Tesseract language code. Defaults to `spa+eng`.
@@ -385,7 +427,7 @@ Recorded against Tesseract 5.5.1 and the current `uv.lock`.
 ### 5. Tests
 
 ```bash
-uv run pytest -q          # 143 tests, about two seconds
+uv run pytest -q          # 157 tests, about three seconds
 ```
 
 | File | Covers |
@@ -396,6 +438,7 @@ uv run pytest -q          # 143 tests, about two seconds
 | `test_layout.py` | region detection and reading-order reconstruction |
 | `test_metrics.py` | CER, word miss rate, transcription normalisation |
 | `test_corpus.py` | image-to-transcription pairing |
+| `test_text_io.py` | `--save-text` output naming, and that it cannot touch ground truth |
 | `test_pipelines.py` | the default stack's composition |
 
 No image or Tesseract install is needed — every fixture is synthesised, so the
@@ -423,7 +466,7 @@ src/acentos_ocr/
 ├── filters/   individual preprocessing steps (BaseFilter subclasses)
 ├── layout/    geometric page segmentation and reading-order reconstruction
 ├── ocr/       Tesseract wrapper + OCRResult
-└── utils/     image loading/saving
+└── utils/     image loading/saving, OCR-text output
 ```
 
 Always import through the package — `from acentos_ocr.filters.grayscale import GrayscaleFilter`.
