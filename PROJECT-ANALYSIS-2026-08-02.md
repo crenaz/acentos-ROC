@@ -701,17 +701,28 @@ clipping photographs, and while recovering the previous session's context.
 
 ### In flight
 
-- [ ] **Commit the `--save-text` work.** `main.py` and `README.md` are modified;
-  `src/acentos_ocr/utils/text_io.py` and `tests/test_text_io.py` are untracked. 157
-  tests pass. The CLI now takes several images and writes each one's text to
+- [x] **Commit the `--save-text` work.** Done 2026-08-12 in `def1651`, pushed to
+  `main`. The CLI now takes several images and writes each one's text to
   `DIR/<stem>.txt`; a batch reports per-image failures and exits non-zero rather
-  than dying on the first bad file.
-- [ ] **Record the new corpus path here once it is known.** A new set of job-listing
-  photographs is coming and lives somewhere other than the current corpus. Note the
-  corpus has already moved twice — a stale
+  than dying on the first bad file. `src/acentos_ocr/utils/text_io.py` holds the
+  writer, `tests/test_text_io.py` the seven tests that pin its naming rules; the
+  suite stands at 157.
+- [x] **Record the new corpus path.** Settled 2026-08-12: the new photographs are not
+  a new corpus. They landed in a new subdirectory of the existing one,
+  `Raw-Photos-Of-Cayman-Job-Listings/August-12`, alongside `July18` and `July26`,
+  under a root that also holds the fifteen `text-of-*.md` files:
+
+  ```
+  /mnt/c/Users/crena/Desktop/temp/AI_RESEARCH/AI VISION MODELS/Cayman Job Clippings
+  ```
+
+  `discover()` therefore already sees them: 15 samples, 12 untranscribed. Note the
+  corpus has moved twice before — a stale
   `Claude-Box/JOBS_RESUME/Raw-Photos-Of-Cayman-Job-Listings` path survives in an old
-  transcript and no longer exists — so locate it by filename (`IMG_*.JPEG`,
-  `text-of-*.md`) rather than trusting any path written down, including this one.
+  transcript and no longer exists — so keep locating it by filename (`IMG_*.JPEG`,
+  `IMG_*.png` since the August batch, `text-of-*.md`) rather than trusting any path
+  written down, including this one.
+  `ACENTOS_CORPUS` is not exported by default; `evaluate_corpus.py` needs it set.
 
 ### Handling the new batch
 
@@ -722,7 +733,10 @@ clipping photographs, and while recovering the previous session's context.
   error that cannot be earned back by any amount of pipeline work. `save_text()`
   refuses the `text-of-*` namespace outright, so the hand-correction step cannot be
   skipped by accident.
-- [ ] **Triage the new photos for capture defects before transcribing them.**
+- [x] **Triage the new photos for capture defects before transcribing them.** Done
+  for `August-12` on 2026-08-12; outcome in the re-shoot item below. Keep doing it
+  for each incoming batch — it cost minutes and spared hand-transcribing four frames
+  that can never score well.
   Transcription is the expensive step and it is wasted on a photograph the pipeline
   cannot read. `IMG_1599` and `IMG_1604` sit near 30% CER and respond to no
   configuration — condensed type shot soft, and a narrow column shot at an angle with
@@ -730,6 +744,75 @@ clipping photographs, and while recovering the previous session's context.
   single global rotation is structurally unable to correct (#13). Anything in the new
   set that looks like those two should be re-shot square-on and closer, not
   transcribed.
+- [ ] **Re-shoot four frames from `August-12`.** Two passes on 2026-08-12: first the
+  original JPEGs (12/12 transcribed, mean confidence 88.6%), then the same frames
+  after they were cropped to a single ad and saved as PNG, in place (12/12, mean
+  89.3%). Drafts are machine output only and have not been hand-corrected.
+
+  Cropping paid off, and it is the cheapest accuracy work found so far — it needs no
+  pipeline change at all. Junk lines, as a share of non-blank lines:
+
+  | frame | JPEG spread | PNG crop | |
+  |---|---|---|---|
+  | `IMG_1720` | 35% | 9% | sliced column gone, bottom still cut |
+  | `IMG_1722` | 6% | 2% | clean |
+  | `IMG_1723` | 12% | 3% | |
+  | `IMG_1725` | 11% | 5% | |
+  | `IMG_1726` | 11% | 0% | clean |
+  | `IMG_1730` | 5% | 0% | clean |
+  | `IMG_1724` | 12% | 14% | crease, unhelped |
+  | `IMG_1729` | 20% | 64% | corner shot, unhelped |
+
+  `IMG_1721`, `IMG_1727`, `IMG_1728` and `IMG_1731` were already clean and stayed so.
+  On `IMG_1727` the crop actually recovered a line the full-frame pass had dropped
+  altogether (`Interested employees may apply via the Government's WORC website…`),
+  which is worth remembering: edge clutter does not merely add junk, it can cost
+  real text elsewhere on the page.
+
+  Four frames still need re-shooting, for reasons cropping cannot touch:
+  - `IMG_1720` — the right-hand column (`ASSISTA…` / `JOBS CAY…`) is sliced
+    vertically by the frame and the Beverage Server ad runs off the bottom
+    mid-sentence. A third of the frame cannot be transcribed because the words are
+    not in the photograph. Confidence 88.3% regardless — the confidence/accuracy
+    split again (#11, #13).
+  - `IMG_1724` — well framed and complete, but a diagonal crease crosses the lower
+    half and Tesseract drops whole clauses there. `--no-deskew`, `--no-reading-order`
+    and `--psm 4` all return byte-identical output, so nothing in the CLI recovers
+    it. Flatten the clipping and re-shoot.
+  - `IMG_1729` — 168 bytes. A corner shot with the left edge cut (`lance with CI
+    Labour Act`, `ONS: Palm Heights`); appears to be the foot of the same Palm
+    Heights ad as `IMG_1728`, but the two frames together still miss the left of
+    those lines.
+  - `IMG_1728` — pairs with the above; re-shoot the ad whole rather than in halves.
+- [x] **A sample is one ad, cropped.** Settled 2026-08-12. The `August-12` frames
+  arrived as photographs of open newspaper spreads rather than cut clippings: each
+  held one readable ad plus vertical slices of its neighbours at the frame edges,
+  and often a curled fold along the top. Left alone, that edge text would score as
+  insertions against a transcription that deliberately omits it, measuring framing
+  rather than OCR. The frames were therefore cropped to the single fully-visible ad
+  and saved as PNG **in place**, replacing the JPEGs, whose originals live in Google
+  Drive — so `August-12` now holds twelve `.png` files and no `.JPEG`.
+
+  PNG was chosen so the crop adds no generation loss: an editor re-encoding a JPEG
+  bakes fresh artefacts into exactly the glyph edges this newsprint can least afford,
+  and neither the Windows Photos app nor GIMP crops losslessly (only `jpegtran` does,
+  and it is not installed here). The cost is size — 7–14 MB a frame against 3 MB.
+
+  For the record, the loss PNG avoids turns out not to be measurable. The fifteen
+  corpus images were re-encoded at JPEG quality 95, 85 and 75 and re-scored on the
+  default stack: **11.9%** CER for the untouched originals against **12.1% / 11.6% /
+  12.6%**. The result is not monotonic — quality 85 beat the originals and 95 lost to
+  them — so the spread is noise at this corpus size, not generation loss. Re-encoding
+  a crop would have been fine. PNG is still the better default because it removes the
+  question rather than answering it per editor, but nobody should re-shoot or re-crop
+  an existing JPEG over this. (Ignore the wall clocks in that sweep; it ran alongside
+  an orphaned job and the timings are meaningless.)
+
+  One trap this raises for anyone re-cropping later: `discover()` matches on **stem**
+  anywhere under the root, so a crop that keeps its original name while the original
+  remains in the tree would pair *both* files to one `text-of-*.md` and score that
+  page twice. `.corpus-ignore` cannot fix that, since it filters by stem and would
+  drop both. Either replace in place, as here, or give the crop a distinct stem.
 - [ ] **Route mastheads and reference shots to `.corpus-ignore`.** A batch of
   clippings usually carries a few frames that are not samples. `IMG_1600` is the
   precedent: recorded as a deliberate exclusion rather than deleted, so the
