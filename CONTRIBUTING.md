@@ -77,5 +77,22 @@ Two conventions that the project takes seriously, both learned the hard way:
 - **Tesseract's confidence is not accuracy.** It has risen while character error
   rate got worse. Use `scripts/evaluate_corpus.py`, not the confidence figure.
 
-New filters need registering in `src/acentos_ocr/filters/registry.py` and a
-behavioural test in `tests/test_filters.py`; see README section 8.
+## Adding a filter
+
+- Add it under `src/acentos_ocr/filters/`, inheriting from `BaseFilter` and
+  implementing `apply(self, image: np.ndarray) -> np.ndarray`.
+- **Register it** in `src/acentos_ocr/filters/registry.py`. That one line is what
+  makes it reachable as `--pipeline yourfilter:option=value`, with its arguments
+  coerced from the constructor's type annotations. A test fails if a filter module
+  is missing from the registry.
+- Give it a behavioural test in `tests/test_filters.py`; the shared contract tests
+  (uint8 output, no mutation of the input) pick it up automatically from the
+  registry.
+- Measure it before adopting it:
+  `scripts/evaluate_corpus.py --pipeline '...' --pipeline '...'`. Two of the filters
+  already in the tree make results *worse* on this corpus, which is only knowable by
+  measuring.
+
+Further detail: [`docs/development.md`](docs/development.md) for tests and layout,
+[`docs/accuracy.md`](docs/accuracy.md) for how measurements are run and what they
+have already shown.

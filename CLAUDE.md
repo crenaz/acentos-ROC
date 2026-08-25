@@ -3,17 +3,28 @@
 A modular OCR pipeline: OpenCV preprocessing filters (Strategy pattern) → Tesseract via
 pytesseract → optional reading-order rebuild. Accuracy is measured, not asserted.
 
-Long-form context lives in two documents — read them rather than re-deriving:
+Long-form context lives in these documents — read them rather than re-deriving:
 
-- `README.md` — what the pipeline does, current measured accuracy, how to run it.
+- `README.md` — summary and quickstart only; it links out rather than restating.
+- `docs/usage.md` — the CLI in full: batches, PDFs, debugging, every flag.
+- `docs/accuracy.md` — how quality is measured and every result so far, including
+  the ideas that were tried and failed. Read this before proposing a change to the
+  pipeline; several obvious improvements are already recorded as negative results.
+- `docs/development.md` — tests, conventions, project layout.
+- `docs/installation.md`, `docs/licence.md` — environment setup and AGPL terms.
 - `PROJECT-ANALYSIS-2026-08-02.md` — decisions, negative results, and the live
   next-steps checklist. Update the checklist in the same commit as the work it
   describes; it has gone stale before.
 
+**Each fact has one home.** Accuracy figures live in `docs/accuracy.md`, the test
+count in `docs/development.md`, flag documentation in `docs/usage.md`. The README
+quotes the headline CER and nothing else. Update the owning document, not a copy —
+this repository has a history of numbers drifting apart across files.
+
 ## Commands
 
 ```bash
-uv run pytest -q                       # 180 tests as of 2026-08-25
+uv run pytest -q                       # count lives in docs/development.md
 uv run python main.py INPUT [INPUT...] # images or PDFs; --save-text DIR writes .txt
 uv run python scripts/evaluate_corpus.py   # the real accuracy measurement
 uv run python scripts/evaluate_cer.py      # one image only; see caveat below
