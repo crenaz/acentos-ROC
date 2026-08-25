@@ -4,14 +4,94 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
+from typing import Any
 
 from acentos_ocr.config import resolve_tessdata_dir
 from acentos_ocr.core.pipelines import build_default_pipeline, build_pipeline
 from acentos_ocr.filters.registry import describe_filters
 from acentos_ocr.ocr.tesseract_wrapper import TesseractWrapper
 from acentos_ocr.utils.image_io import load_image
+from acentos_ocr.utils.pdf_io import (
+    MIN_TEXT_LAYER_CHARS,
+    extract_text_layer,
+    is_pdf,
+    page_count,
+    render_page,
+)
 from acentos_ocr.utils.text_io import TEXT_SUFFIX, resolve_text_paths, save_text
+
+
+@dataclass(frozen=True)
+class WorkItem:
+    """
+    One unit of work: a page to be OCR'd, or text a PDF already carried.
+
+    An image is one item; a PDF is one item per page. Expanding inputs into these
+    before anything runs is what lets the rest of main() stay unaware of PDFs --
+    output naming, clash detection, per-item failure handling and the batch summary
+    all operate on items and never ask where the pixels came from.
+    """
+
+    label: str                                  # what to print for this item
+    name: Path                                  # drives --save-text naming
+    source: Path                                # the file the user actually named
+    load: Callable[[], Any] | None = None       # renders/reads the image, lazily
+    text: str | None = None                     # set when a text layer supplied it
+
+
+def expand_inputs(
+    paths: Sequence[Path], *, pdf_dpi: int | None, force_ocr: bool
+) -> list[WorkItem]:
+    """
+    Flatten the command line into per-page work items.
+
+    PDF pages that carry a real text layer are taken as-is: those characters are
+    exact, and rasterising them so Tesseract can guess at them again would only
+    introduce errors. `force_ocr` overrides that, which matters when a file has a
+    bad text layer left behind by some other tool.
+
+    Page images are produced by the `load` callable rather than up front, so a long
+    document is rendered a page at a time instead of all at once.
+    """
+    items: list[WorkItem] = []
+    for path in paths:
+        if not is_pdf(path):
+            items.append(
+                WorkItem(
+                    label=path.name,
+                    name=path,
+                    source=path,
+                    load=partial(load_image, path),
+                )
+            )
+            continue
+
+        texts = [""] * page_count(path) if force_ocr else extract_text_layer(path)
+        digits = max(2, len(str(len(texts))))
+        for number, text in enumerate(texts, start=1):
+            # A virtual path, never written. It exists so page items get distinct
+            # stems and flow through resolve_text_paths like any other input.
+            virtual = path.with_name(f"{path.stem}-p{number:0{digits}d}{path.suffix}")
+            label = f"{path.name} page {number}"
+            if len(text) >= MIN_TEXT_LAYER_CHARS:
+                items.append(
+                    WorkItem(label=label, name=virtual, source=path, text=text)
+                )
+            else:
+                items.append(
+                    WorkItem(
+                        label=label,
+                        name=virtual,
+                        source=path,
+                        load=partial(render_page, path, number, pdf_dpi),
+                    )
+                )
+
+    return items
 
 
 def main() -> None:
@@ -23,11 +103,14 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "images",
+        "inputs",
         type=str,
         nargs="+",
-        metavar="IMAGE",
-        help="Path to the input image. Several may be given; each is OCR'd in turn.",
+        metavar="INPUT",
+        help=(
+            "Path to an image or a PDF. Several may be given; each is processed in "
+            "turn, and a PDF contributes one page at a time."
+        ),
     )
     parser.add_argument(
         "--save-text",
@@ -122,6 +205,29 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--pdf-dpi",
+        type=int,
+        default=None,
+        metavar="DPI",
+        help=(
+            "Resolution to render PDF pages at. Defaults to each page's own native "
+            "resolution, which is what a scan actually contains -- rendering above "
+            "it interpolates, costing time and gaining no detail. Phone scan-to-PDF "
+            "makes this especially worth leaving alone: it sizes the page box to the "
+            "pixels at 72 DPI, so an ordinary sheet can claim to be 28 inches wide."
+        ),
+    )
+    parser.add_argument(
+        "--force-ocr",
+        action="store_true",
+        help=(
+            "OCR every PDF page even when it already carries a text layer. By "
+            "default that text is used as-is, because it is exact and OCR could "
+            "only introduce errors. Use this when another tool has left a bad text "
+            "layer behind."
+        ),
+    )
+    parser.add_argument(
         "--oem",
         type=int,
         default=3,
@@ -135,7 +241,17 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    images = [Path(path) for path in args.images]
+    try:
+        items = expand_inputs(
+            [Path(path) for path in args.inputs],
+            pdf_dpi=args.pdf_dpi,
+            force_ocr=args.force_ocr,
+        )
+    except Exception as error:
+        # An unreadable or encrypted PDF is user error, not a crash, and it is
+        # worth failing on before any of the batch has run.
+        parser.error(f"could not read input: {error}")
+
     debug_dir = Path(args.out_debug_dir) if args.debug else None
     if args.debug:
         print(f"Pipeline steps (images written to {debug_dir}/):")
@@ -143,10 +259,10 @@ def main() -> None:
     # Both the names and the destination are settled before any OCR runs. A clash
     # discovered twelve pages in would already have overwritten a page's text, and
     # an unwritable directory is worth knowing about before a minute of Tesseract.
-    text_paths: list[Path | None] = [None] * len(images)
+    text_paths: list[Path | None] = [None] * len(items)
     if args.save_text:
         try:
-            text_paths = resolve_text_paths(images, args.save_text)
+            text_paths = resolve_text_paths([item.name for item in items], args.save_text)
             Path(args.save_text).mkdir(parents=True, exist_ok=True)
         except (ValueError, OSError) as error:
             parser.error(str(error))
@@ -175,43 +291,51 @@ def main() -> None:
     )
 
     confidences: list[float] = []
-    failures: list[Path] = []
-    for position, (img_path, text_path) in enumerate(zip(images, text_paths), start=1):
-        if len(images) > 1:
-            print(f"\n=== [{position}/{len(images)}] {img_path.name} ===")
+    failures: list[str] = []
+    for position, (item, text_path) in enumerate(zip(items, text_paths), start=1):
+        if len(items) > 1:
+            print(f"\n=== [{position}/{len(items)}] {item.label} ===")
 
         try:
-            image = load_image(img_path)
-            processed = pipeline.run(image, name=img_path.stem)
-            result = ocr.process_image(processed, custom_config=config)
+            if item.text is not None:
+                text, summary = item.text, "text layer (no OCR)"
+            else:
+                image = item.load()
+                processed = pipeline.run(image, name=item.name.stem)
+                result = ocr.process_image(processed, custom_config=config)
+                text, summary = result.text, result.config_used
+                confidences.append(result.confidence)
         except Exception as error:
             # A batch must not lose the pages it already transcribed to one
             # unreadable file or one Tesseract failure. Report it, carry on, and
             # exit non-zero below so the run is not mistaken for a clean one.
-            print(f"FAILED {img_path}: {error}")
-            failures.append(img_path)
+            print(f"FAILED {item.label}: {error}")
+            failures.append(item.label)
             continue
 
         print("=== OCR TEXT ===")
-        print(result.text)
+        print(text)
         print("\n=== SUMMARY ===")
-        print(f"Average confidence: {result.confidence:.2f}%")
-        print(f"Config used: {result.config_used}")
-        if result.confidence < 70:
+        if item.text is None:
+            print(f"Average confidence: {confidences[-1]:.2f}%")
+        else:
+            print("Source: embedded text layer, extracted exactly")
+        print(f"Config used: {summary}")
+        if item.text is None and confidences[-1] < 70:
             print("Tip: If quality is low, try --psm 3 or --psm 4, or --oem 1 to force the LSTM engine.")
 
-        confidences.append(result.confidence)
         if text_path is not None:
-            save_text(text_path, result.text)
+            save_text(text_path, text)
             print(f"Wrote {text_path}")
 
-    if len(images) > 1:
-        mean = sum(confidences) / len(confidences) if confidences else 0.0
+    if len(items) > 1:
+        transcribed = len(items) - len(failures)
         print("\n=== BATCH ===")
-        print(
-            f"{len(confidences)} of {len(images)} images transcribed, "
-            f"mean confidence {mean:.2f}%"
-        )
+        summary = f"{transcribed} of {len(items)} pages transcribed"
+        if confidences:
+            mean = sum(confidences) / len(confidences)
+            summary += f", mean confidence {mean:.2f}% over {len(confidences)} OCR'd"
+        print(summary)
         for failed in failures:
             print(f"  failed: {failed}")
 

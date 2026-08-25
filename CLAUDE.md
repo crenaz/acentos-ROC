@@ -13,8 +13,8 @@ Long-form context lives in two documents — read them rather than re-deriving:
 ## Commands
 
 ```bash
-uv run pytest -q                       # 157 tests as of 2026-08-25
-uv run python main.py IMAGE [IMAGE...] # OCR; --save-text DIR writes DIR/<stem>.txt
+uv run pytest -q                       # 180 tests as of 2026-08-25
+uv run python main.py INPUT [INPUT...] # images or PDFs; --save-text DIR writes .txt
 uv run python scripts/evaluate_corpus.py   # the real accuracy measurement
 uv run python scripts/evaluate_cer.py      # one image only; see caveat below
 ```
@@ -60,6 +60,26 @@ run can't silently overwrite the thing it is being scored against.
 - A sample is **one advertisement, cropped** — not a full newspaper spread. Slicing
   neighbouring ads into the frame produces junk lines that measure the photograph
   rather than the pipeline.
+
+## PDF input
+
+`main.py` accepts `.pdf` alongside images (`utils/pdf_io.py`). Two rules drive it:
+
+- **A text layer wins.** A digital-born PDF already holds exact characters; OCR could
+  only introduce errors, so the embedded text is used as-is. `--force-ocr` overrides
+  this for files where another tool left a bad text layer behind.
+- **Render at native resolution, not at a DPI.** Phone scan-to-PDF sizes the page box
+  to the pixels at 72 DPI, so an ordinary sheet can declare itself 28 inches wide —
+  rendering *that* at 300 DPI turns a 2053-pixel scan into an 8559-pixel one made
+  almost entirely of interpolation. The default follows the page's own largest image;
+  `--pdf-dpi` overrides, and a 6000-pixel long-edge clamp catches the pathological
+  cases.
+
+A PDF expands to one work item per page, named `<stem>-p01`, `-p02`, … so pages flow
+through `resolve_text_paths` with distinct stems like any other input.
+
+Test fixtures build PDFs in memory (`tests/test_pdf_io.py`). **Do not commit sample
+PDFs** — the documents this feature exists for are scans of personal paperwork.
 
 ## Adding a preprocessing filter
 
