@@ -87,9 +87,10 @@ Commit `uv.lock` and `.python-version` with any such change. Because OCR output 
 sensitive to the OpenCV version, re-locking should always be followed by re-running
 the sample images below and confirming the confidence scores are unchanged.
 
-### 4. Running OCR on an image
+### 4. Running OCR
 
-Assuming `document.png` lives in the project root:
+Input is an image or a PDF; several may be given at once, mixed freely. Assuming
+`document.png` lives in the project root:
 
 ```bash
 uv run python main.py document.png --debug --out-debug-dir debug --psm 6
@@ -138,6 +139,46 @@ Three things worth knowing about the batch behaviour:
 A single image prints exactly what it always did — the per-picture headers and
 the batch summary appear only when there is more than one.
 
+#### Reading PDFs
+
+PDFs can be given anywhere an image can, mixed freely with them. Each page becomes
+its own unit of work, written as `<stem>-p01.txt`, `-p02.txt`, and so on:
+
+```bash
+uv run python main.py scan.pdf ~/clippings/*.JPEG --save-text transcripts/
+```
+
+No extra system package is needed — `uv sync` pulls `pypdfium2`, which ships its own
+PDF engine as a wheel.
+
+Two behaviours are worth understanding, because both are decisions rather than
+defaults inherited from a library:
+
+- **A text layer is used as-is, and OCR is the fallback.** A digital-born PDF —
+  exported from a word processor, a browser, a design tool — already contains the
+  exact characters. Rasterising one so Tesseract can guess at the pixels can only
+  introduce errors where there were none, so embedded text is extracted directly and
+  the pipeline is never invoked. The check runs per page, since a scan appended to a
+  digital document is a real thing, and a page needs 32 characters to count: a stray
+  annotation, or a bad text layer left behind by some other OCR tool, is worse than
+  nothing. `--force-ocr` ignores the text layer entirely, which is the escape hatch
+  for exactly that case.
+
+- **Pages render at the scan's own resolution, not at a chosen DPI.** This matters
+  more than it sounds. Phone "scan to PDF" wraps a photo in a page box sized to the
+  pixel count at 72 DPI, so an ordinary sheet of paper can declare itself 28 inches
+  wide. Rendering one of those at a sensible-looking 300 DPI turned a 2053-pixel scan
+  into an **8559-pixel** one — sixteen times the pixels, none of them carrying any
+  more detail, and a correspondingly slower OCR pass. The default instead follows the
+  native resolution of the page's own largest image, reproducing the scan exactly.
+  `--pdf-dpi` overrides it when you do want a fixed resolution, and a 6000-pixel
+  long-edge clamp catches pathological page boxes either way.
+
+For a scanned page, the result is identical to extracting the image yourself with
+`pdfimages -all` and running the pipeline over that — the same words, differing only
+in blank-line placement. The point of the built-in path is that it picks the right
+resolution for you, and knows when not to OCR at all.
+
 #### Diagnosing a bad result
 
 `--debug` writes one image per pipeline stage, numbered in execution order:
@@ -170,11 +211,14 @@ Flags:
 
 - `--save-text DIR`: write each picture's OCR text to `DIR/<stem>.txt` — see above.
 - `--debug`: prints each pipeline step with its shape and dtype, reports which tessdata directory was used, and writes **every intermediate image** to the `debug/` directory.
+- `--out-debug-dir`: where `--debug` writes its intermediate images (default `debug/`).
 - `--psm`: Tesseract Page Segmentation Mode (6 works well for blocks of text).
 - `--lang`: Tesseract language code. Defaults to `spa+eng`.
 - `--deskew` / `--no-deskew`: correct page skew before OCR. **On by default** — see below.
 - `--reading-order` / `--no-reading-order`: rebuild reading order from word geometry on multi-column pages. **On by default** — see below.
 - `--pipeline`: compose the preprocessing stack explicitly — see below. Overrides `--deskew`.
+- `--pdf-dpi`: resolution to render PDF pages at. Defaults to each page's native resolution — see above.
+- `--force-ocr`: OCR PDF pages even when they already carry a text layer — see above.
 - `--oem`: OCR Engine Mode — `1` (LSTM) or `3` (default). Legacy modes are gone in Tesseract 5.
 - `--tessdata-dir`: override the language-model directory (defaults to project-local `tessdata/`).
 - `--tesseract-cmd`: override path to Tesseract binary if needed (default is usually `/usr/bin/tesseract`).
@@ -427,7 +471,7 @@ Recorded against Tesseract 5.5.1 and the current `uv.lock`.
 ### 5. Tests
 
 ```bash
-uv run pytest -q          # 157 tests, about three seconds
+uv run pytest -q          # 180 tests, about three seconds
 ```
 
 | File | Covers |
@@ -439,6 +483,8 @@ uv run pytest -q          # 157 tests, about three seconds
 | `test_metrics.py` | CER, word miss rate, transcription normalisation |
 | `test_corpus.py` | image-to-transcription pairing |
 | `test_text_io.py` | `--save-text` output naming, and that it cannot touch ground truth |
+| `test_pdf_io.py` | text-layer detection, page rendering, and native-resolution choice |
+| `test_main_inputs.py` | flattening images and PDF pages into per-page work items |
 | `test_pipelines.py` | the default stack's composition |
 
 No image or Tesseract install is needed — every fixture is synthesised, so the
@@ -466,7 +512,7 @@ src/acentos_ocr/
 ├── filters/   individual preprocessing steps (BaseFilter subclasses)
 ├── layout/    geometric page segmentation and reading-order reconstruction
 ├── ocr/       Tesseract wrapper + OCRResult
-└── utils/     image loading/saving, OCR-text output
+└── utils/     image loading/saving, PDF reading, OCR-text output
 ```
 
 Always import through the package — `from acentos_ocr.filters.grayscale import GrayscaleFilter`.
