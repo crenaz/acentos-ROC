@@ -19,7 +19,7 @@ dependencies = [
   "numpy>=1.26",
   "opencv-python-headless>=4.9.0",
   "pytesseract>=0.3.10",
-  "pillow>=10.0.0",
+  "pillow>=13.0.0",
   "pandas>=2.1.0",
   "pypdfium2>=5.13.0",
 ]
